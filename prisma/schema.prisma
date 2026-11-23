@@ -1,0 +1,162 @@
+// PostgreSQL (локально и на хостинге). DATABASE_URL=postgresql://...
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Workspace = клиент/бренд. Делает платформу готовой к SaaS (много клиентов).
+model Workspace {
+  id        String    @id @default(cuid())
+  name      String
+  createdAt DateTime  @default(now())
+  accounts  Account[]
+  posts     Post[]
+  aiSettings AiSettings?
+  aiRuns    AiRun[]
+}
+
+// Подключённый аккаунт соцсети (IG, FB-страница, TikTok, YouTube-канал)
+model Account {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider       String // instagram | facebook | tiktok | youtube
+  externalId     String
+  name           String
+  avatarUrl      String?
+  accessTokenEnc String // зашифрованный токен (AES-256-GCM)
+  refreshTokenEnc String?
+  tokenExpiresAt DateTime?
+  adAccountId    String? // рекламный кабинет (Meta act_..., TikTok advertiser_id, Google Ads customer)
+  createdAt      DateTime  @default(now())
+  metrics        MetricSnapshot[]
+  targets        PostTarget[]
+
+  @@unique([provider, externalId, workspaceId])
+}
+
+// Снимок метрик аккаунта за день (собирается планировщиком)
+model MetricSnapshot {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date        DateTime
+  followers   Int      @default(0)
+  views       Int      @default(0)
+  reach       Int      @default(0)
+  likes       Int      @default(0) // лайки / реакции
+  dislikes    Int?     // только YouTube
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  saves       Int      @default(0)
+
+  @@unique([accountId, date])
+}
+
+model Post {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  caption     String
+  mediaUrl    String?
+  mediaType   String       @default("image") // image | video
+  scheduledAt DateTime?
+  status      String       @default("draft") // draft | scheduled | publishing | published | failed
+  hook        String       @default("")
+  variant     String       @default("") // A | B для A/B теста хуков
+  pillar      String       @default("")
+  createdAt   DateTime     @default(now())
+  targets     PostTarget[]
+}
+
+// Пост в конкретную сеть (один пост -> несколько сетей)
+model PostTarget {
+  id         String   @id @default(cuid())
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  status     String   @default("pending") // pending | published | failed
+  externalId String?
+  error      String?
+}
+
+// Настройки ИИ-SMM-менеджера
+model AiSettings {
+  id               String    @id @default(cuid())
+  workspaceId      String    @unique
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brief            String    @default("") // о бренде: что продаём, аудитория, тон
+  goals            String    @default("Рост охвата и вовлечённости")
+  postsPerWeek     Int       @default(5)
+  maxDailyAdBudget Float     @default(20) // потолок суточного бюджета на одну кампанию
+  autoPublish      Boolean   @default(false) // публиковать посты ИИ без подтверждения
+  autoPauseAds     Boolean   @default(true)  // разрешить ИИ ставить на паузу неэффективные кампании (экономит деньги)
+  runEveryHours    Int       @default(24)
+  niche            String    @default("") // сфера бизнеса для бенчмарков и автонастройки
+  websiteUrl       String    @default("") // сайт для ссылок и UTM
+  pixelId          String    @default("") // Meta Pixel для кампаний «Продажи»
+  timezone         String    @default("Asia/Baku") // часовой пояс аудитории для лучшего времени
+  autoRules        Boolean   @default(true) // автоправила таргетолога
+  minCtr           Float     @default(0.8) // % CTR, ниже которого кампания считается неэффективной
+  minSpendToJudge  Float     @default(10) // сколько потратить за 7 дней, прежде чем судить
+  scaleCtr         Float     @default(2.0) // % CTR, выше которого кампанию предлагается масштабировать
+  retargetingAudienceId String @default("") // аудитория вовлечённых (Meta)
+  lookalikeAudienceId   String @default("")
+}
+
+// Один запуск ИИ: анализ + стратегия + предложения
+model AiRun {
+  id          String     @id @default(cuid())
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  status      String     @default("running") // running | done | failed
+  analysis    String     @default("")
+  strategy    String     @default("")
+  error       String?
+  proposals   Proposal[]
+}
+
+// Действие, предложенное ИИ. Всё, что тратит деньги, ждёт подтверждения человека.
+model Proposal {
+  id        String   @id @default(cuid())
+  runId     String
+  run       AiRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  kind      String   // post | create_campaign | set_budget | pause | resume
+  title     String
+  reason    String
+  payload   String   // JSON
+  dailyCost Float    @default(0)
+  status    String   @default("pending") // pending | approved | rejected | executed | failed | blocked
+  result    String?
+  createdAt DateTime @default(now())
+}
+
+// Сохранённые наборы хэштегов для быстрого выбора
+model HashtagSet {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  tags        String   // через пробел: "#a #b #c"
+  createdAt   DateTime @default(now())
+}
+
+// Комментарии и черновики ответов ИИ
+model CommentItem {
+  id          String   @id @default(cuid())
+  accountId   String
+  externalId  String
+  author      String
+  text        String
+  postCaption String   @default("")
+  createdAt   DateTime
+  sentiment   String   @default("") // positive | neutral | negative | question
+  replyDraft  String   @default("")
+  status      String   @default("new") // new | replied | ignored
+  @@unique([accountId, externalId])
+}
