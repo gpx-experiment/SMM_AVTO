@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authConnector, AUTH_PROVIDERS } from "@/connectors";
 import { randomState } from "@/lib/crypto";
 import type { AuthProvider } from "@/connectors/types";
-import { DEMO } from "@/lib/env";
+import { APP_URL, DEMO, env } from "@/lib/env";
 
 // Какие ключи нужны каждой сети: без них показываем понятную подсказку вместо ошибки соцсети.
 const KEYS: Record<string, string[]> = {
@@ -15,12 +15,12 @@ const KEYS: Record<string, string[]> = {
 export async function GET(_req: Request, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
   if (!AUTH_PROVIDERS.some((p) => p.id === provider)) return NextResponse.json({ error: "unknown provider" }, { status: 404 });
-  const missing = DEMO ? [] : (KEYS[provider] ?? []).filter((k) => !process.env[k]);
+  const missing = DEMO ? [] : (KEYS[provider] ?? []).filter((k) => !env(k));
   if (missing.length)
     return new NextResponse(`Эта сеть ещё не настроена: на хостинге не заданы ${missing.join(", ")}.`, { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } });
   const state = randomState();
   const url = authConnector(provider as AuthProvider).authUrl(state);
-  const res = NextResponse.redirect(new URL(url, _req.url));
+  const res = NextResponse.redirect(new URL(url, APP_URL));
   res.cookies.set("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 600, path: "/" });
   return res;
 }

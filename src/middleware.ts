@@ -3,7 +3,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 export function middleware(req: NextRequest) {
-  const password = process.env.APP_PASSWORD;
+  const password = process.env.APP_PASSWORD?.trim();
   if (!password) return NextResponse.next();
   const auth = req.headers.get("authorization") ?? "";
   if (auth.startsWith("Basic ")) {

@@ -1,7 +1,7 @@
 // TikTok: Login Kit + Display API (статистика), Content Posting API (публикация),
 // Marketing API (реклама, отдельная авторизация через TikTok for Business).
 // Пока приложение не прошло аудит TikTok, видео публикуются только как приватные (SELF_ONLY).
-import { callbackUrl } from "@/lib/env";
+import { callbackUrl, env } from "@/lib/env";
 import { http, type Connector, type Campaign } from "./types";
 
 const OPEN = "https://open.tiktokapis.com/v2";
@@ -10,20 +10,22 @@ const form = (p: Record<string, string>) => ({
   method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(p),
 });
 
-type Token = { access_token: string; refresh_token: string; expires_in: number; open_id: string };
+type Token = { access_token: string; refresh_token: string; expires_in: number; open_id: string; error?: string; error_description?: string };
 const toSet = (t: Token) => ({ accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) });
 
 export const tiktok: Connector = {
   authUrl: (state) => `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({
-    client_key: process.env.TIKTOK_CLIENT_KEY!, response_type: "code", state, redirect_uri: callbackUrl("tiktok"),
+    client_key: env("TIKTOK_CLIENT_KEY"), response_type: "code", state, redirect_uri: callbackUrl("tiktok"),
     scope: "user.info.basic,user.info.profile,user.info.stats,video.list,video.publish",
   })}`,
 
   async exchangeCode(code) {
     const t = await http<Token>(`${OPEN}/oauth/token/`, form({
-      client_key: process.env.TIKTOK_CLIENT_KEY!, client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+      client_key: env("TIKTOK_CLIENT_KEY"), client_secret: env("TIKTOK_CLIENT_SECRET"),
       code, grant_type: "authorization_code", redirect_uri: callbackUrl("tiktok"),
     }));
+    // TikTok отвечает 200 даже при ошибке: проверяем тело, чтобы показать понятную причину.
+    if (!t.access_token) throw new Error(`TikTok: ${t.error_description || t.error || "не выдал токен"}. Проверьте Client Key/Secret и Redirect URI.`);
     const u = await http<{ data: { user: { open_id: string; display_name: string; avatar_url?: string } } }>(
       `${OPEN}/user/info/?fields=open_id,display_name,avatar_url`, { headers: { Authorization: `Bearer ${t.access_token}` } });
     return [{ provider: "tiktok", externalId: u.data.user.open_id, name: u.data.user.display_name, avatarUrl: u.data.user.avatar_url, ...toSet(t) }];
@@ -31,9 +33,10 @@ export const tiktok: Connector = {
 
   async refresh(refreshToken) {
     const t = await http<Token>(`${OPEN}/oauth/token/`, form({
-      client_key: process.env.TIKTOK_CLIENT_KEY!, client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+      client_key: env("TIKTOK_CLIENT_KEY"), client_secret: env("TIKTOK_CLIENT_SECRET"),
       grant_type: "refresh_token", refresh_token: refreshToken,
     }));
+    if (!t.access_token) throw new Error(`TikTok: ${t.error_description || t.error || "не обновил токен"}`);
     return toSet(t);
   },
 
@@ -55,7 +58,7 @@ export const tiktok: Connector = {
     const r = await http<{ data: { publish_id: string } }>(`${OPEN}/post/publish/video/init/`, {
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        post_info: { title: post.caption.slice(0, 2200), privacy_level: process.env.TIKTOK_PRIVACY ?? "SELF_ONLY" },
+        post_info: { title: post.caption.slice(0, 2200), privacy_level: (env("TIKTOK_PRIVACY") || "SELF_ONLY") },
         // PULL_FROM_URL требует подтверждённого домена в настройках приложения TikTok
         source_info: { source: "PULL_FROM_URL", video_url: post.mediaUrl },
       }),
@@ -67,16 +70,18 @@ export const tiktok: Connector = {
 // Реклама TikTok: отдельное приложение TikTok for Business, токен без срока действия.
 export const tiktokAds: Connector = {
   authUrl: (state) => `https://business-api.tiktok.com/portal/auth?${new URLSearchParams({
-    app_id: process.env.TIKTOK_ADS_APP_ID!, state, redirect_uri: callbackUrl("tiktok_ads"),
+    app_id: env("TIKTOK_ADS_APP_ID"), state, redirect_uri: callbackUrl("tiktok_ads"),
   })}`,
 
   async exchangeCode(code) {
-    const r = await http<{ data: { access_token: string; advertiser_ids: string[] } }>(`${ADS}/oauth2/access_token/`, {
+    const r = await http<{ code?: number; message?: string; data?: { access_token: string; advertiser_ids: string[] } }>(`${ADS}/oauth2/access_token/`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ app_id: process.env.TIKTOK_ADS_APP_ID, secret: process.env.TIKTOK_ADS_SECRET, auth_code: code }),
+      body: JSON.stringify({ app_id: env("TIKTOK_ADS_APP_ID"), secret: env("TIKTOK_ADS_SECRET"), auth_code: code }),
     });
-    return r.data.advertiser_ids.map((id) => ({
-      provider: "tiktok_ads" as const, externalId: id, name: `TikTok Ads ${id}`, accessToken: r.data.access_token, adAccountId: id,
+    if (!r.data?.access_token) throw new Error(`TikTok Ads: ${r.message || "не выдал токен"}. Проверьте App ID/Secret и Redirect URI.`);
+    const { access_token, advertiser_ids } = r.data;
+    return advertiser_ids.map((id) => ({
+      provider: "tiktok_ads" as const, externalId: id, name: `TikTok Ads ${id}`, accessToken: access_token, adAccountId: id,
     }));
   },
 

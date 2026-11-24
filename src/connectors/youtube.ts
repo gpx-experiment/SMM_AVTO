@@ -1,6 +1,6 @@
 // YouTube: Data API v3 (канал, загрузка видео) + Analytics API (просмотры, лайки, ДИЗЛАЙКИ).
 // Реклама YouTube идёт через Google Ads API (нужен developer token): следующий этап.
-import { callbackUrl } from "@/lib/env";
+import { callbackUrl, env } from "@/lib/env";
 import { http, type Connector } from "./types";
 
 const SCOPES = [
@@ -12,13 +12,13 @@ const SCOPES = [
 type Token = { access_token: string; refresh_token?: string; expires_in: number };
 const tokenReq = (p: Record<string, string>) => http<Token>("https://oauth2.googleapis.com/token", {
   method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!, ...p }),
+  body: new URLSearchParams({ client_id: env("GOOGLE_CLIENT_ID"), client_secret: env("GOOGLE_CLIENT_SECRET"), ...p }),
 });
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
 export const youtube: Connector = {
   authUrl: (state) => `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID!, redirect_uri: callbackUrl("youtube"), response_type: "code",
+    client_id: env("GOOGLE_CLIENT_ID"), redirect_uri: callbackUrl("youtube"), response_type: "code",
     scope: SCOPES, access_type: "offline", prompt: "consent", state,
   })}`,
 

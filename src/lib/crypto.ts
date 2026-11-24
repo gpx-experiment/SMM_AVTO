@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 function key() {
-  const hex = process.env.TOKEN_ENCRYPTION_KEY;
+  const hex = process.env.TOKEN_ENCRYPTION_KEY?.trim();
   if (!hex || hex.length !== 64) throw new Error("TOKEN_ENCRYPTION_KEY must be 32 bytes hex");
   return Buffer.from(hex, "hex");
 }

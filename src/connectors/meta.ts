@@ -2,10 +2,10 @@
 // Для чужих аккаунтов нужен App Review (pages_*, instagram_*, ads_management) и Business Verification.
 // В режиме разработки работает без проверки для людей с ролью в приложении.
 // Приложение типа «Бизнес» использует Facebook Login for Business: тогда задайте META_CONFIG_ID (ID конфигурации входа).
-import { callbackUrl } from "@/lib/env";
+import { callbackUrl, env } from "@/lib/env";
 import { http, type Connector, type ConnectedAccount, type DailyMetrics, type Campaign } from "./types";
 
-const V = process.env.META_API_VERSION ?? "v23.0";
+const V = (env("META_API_VERSION") || "v23.0");
 const G = `https://graph.facebook.com/${V}`;
 const SCOPES = [
   "pages_show_list", "pages_read_engagement", "pages_manage_posts", "read_insights",
@@ -23,10 +23,10 @@ type Page = {
 
 export const meta: Connector = {
   authUrl: (state) =>
-    `https://www.facebook.com/${V}/dialog/oauth?${q_({ client_id: process.env.META_APP_ID!, redirect_uri: callbackUrl("meta"), state, ...(process.env.META_CONFIG_ID ? { config_id: process.env.META_CONFIG_ID } : { scope: SCOPES }) })}`,
+    `https://www.facebook.com/${V}/dialog/oauth?${q_({ client_id: env("META_APP_ID"), redirect_uri: callbackUrl("meta"), state, ...(env("META_CONFIG_ID") ? { config_id: env("META_CONFIG_ID") } : { scope: SCOPES }) })}`,
 
   async exchangeCode(code) {
-    const base = { client_id: process.env.META_APP_ID!, client_secret: process.env.META_APP_SECRET! };
+    const base = { client_id: env("META_APP_ID"), client_secret: env("META_APP_SECRET") };
     const short = await http<{ access_token: string }>(`${G}/oauth/access_token?${q_({ ...base, redirect_uri: callbackUrl("meta"), code })}`);
     // Долгоживущий токен пользователя (~60 дней); токены страниц, полученные из него, не истекают.
     const long = await http<{ access_token: string; expires_in?: number }>(

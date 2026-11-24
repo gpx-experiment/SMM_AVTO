@@ -6,7 +6,7 @@ import { getSettings, runAgent } from "@/lib/ai";
 import { syncComments } from "@/lib/comments";
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.CRON_SECRET?.trim();
   if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const published = await publishDue();
   const report: Record<string, unknown> = { published };
