@@ -14,4 +14,5 @@ export function middleware(req: NextRequest) {
   return new NextResponse("Нужен пароль", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="Avtopilot", charset="UTF-8"' } });
 }
 
-export const config = { matcher: ["/((?!privacy|api/cron|_next/static|_next/image|favicon.ico).*)"] };
+// tiktok*.txt — файл подтверждения URL-префикса для TikTok for Developers.
+export const config = { matcher: ["/((?!privacy|api/cron|_next/static|_next/image|favicon.ico|tiktok[A-Za-z0-9]+\\.txt).*)"] };

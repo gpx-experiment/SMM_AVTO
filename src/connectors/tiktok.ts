@@ -63,14 +63,34 @@ export const tiktok: Connector = {
 
   async publish(_acc, token, post) {
     if (post.mediaType !== "video" || !post.mediaUrl) throw new Error("TikTok принимает только видео");
-    const r = await http<{ data: { publish_id: string } }>(`${OPEN}/post/publish/video/init/`, {
+    // FILE_UPLOAD: сервер сам скачивает видео по ссылке и загружает в TikTok частями,
+    // поэтому ссылка может вести на любой сайт (PULL_FROM_URL требует подтверждённого домена).
+    const res = await fetch(post.mediaUrl);
+    if (!res.ok) throw new Error(`Не удалось скачать видео по ссылке (${res.status})`);
+    const video = new Uint8Array(await res.arrayBuffer());
+    const size = video.byteLength;
+    if (size > 250 * 1024 * 1024) throw new Error("Видео больше 250 МБ: сожмите его перед публикацией");
+    // Правила TikTok: часть 5–64 МБ, последняя часть забирает остаток; файл < 5 МБ — одной частью.
+    const CHUNK = 10 * 1024 * 1024;
+    const chunkSize = size < 5 * 1024 * 1024 ? size : CHUNK;
+    const chunks = Math.max(1, Math.floor(size / chunkSize));
+    const r = await http<{ data: { publish_id: string; upload_url: string } }>(`${OPEN}/post/publish/video/init/`, {
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         post_info: { title: post.caption.slice(0, 2200), privacy_level: (env("TIKTOK_PRIVACY") || "SELF_ONLY") },
-        // PULL_FROM_URL требует подтверждённого домена в настройках приложения TikTok
-        source_info: { source: "PULL_FROM_URL", video_url: post.mediaUrl },
+        source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: chunkSize, total_chunk_count: chunks },
       }),
     });
+    const type = res.headers.get("content-type")?.startsWith("video/") ? res.headers.get("content-type")! : "video/mp4";
+    for (let i = 0; i < chunks; i++) {
+      const start = i * chunkSize;
+      const end = i === chunks - 1 ? size - 1 : start + chunkSize - 1;
+      const up = await fetch(r.data.upload_url, {
+        method: "PUT", body: video.subarray(start, end + 1),
+        headers: { "Content-Type": type, "Content-Length": String(end - start + 1), "Content-Range": `bytes ${start}-${end}/${size}` },
+      });
+      if (!up.ok) throw new Error(`TikTok не принял часть ${i + 1}/${chunks}: ${up.status} ${await up.text()}`);
+    }
     return r.data.publish_id;
   },
 };
