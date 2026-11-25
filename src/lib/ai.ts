@@ -69,7 +69,7 @@ ${playbookPrompt()}`;
 
 async function gatherContext(workspaceId: string) {
   const since = new Date(Date.now() - 14 * 86400000);
-  const accounts = await db.account.findMany({ where: { workspaceId }, include: { metrics: { where: { date: { gte: since } }, orderBy: { date: "asc" } } } });
+  const accounts = await db.account.findMany({ where: { workspaceId, hidden: false }, include: { metrics: { where: { date: { gte: since } }, orderBy: { date: "asc" } } } });
   const posts = await db.post.findMany({ where: { workspaceId }, orderBy: { createdAt: "desc" }, take: 20, include: { targets: true } });
   const ads = [];
   for (const a of await adsAccounts(workspaceId)) {
@@ -244,7 +244,7 @@ export async function executeProposal(id: string, overrides?: { mediaUrl?: strin
       const token = await tokenFor(acc);
       if (p.kind === "create_retargeting") {
         if (!ads.createEngagementAudience) throw new Error("Ретаргетинг пока поддерживается только для Meta");
-        const own = await db.account.findMany({ where: { workspaceId: p.run.workspaceId, provider: { in: ["instagram", "facebook"] } } });
+        const own = await db.account.findMany({ where: { workspaceId: p.run.workspaceId, hidden: false, provider: { in: ["instagram", "facebook"] } } });
         const igId = own.find((a) => a.provider === "instagram")?.externalId;
         const pageId = own.find((a) => a.provider === "facebook" && !a.externalId.startsWith("ads:"))?.externalId;
         const audId = await ads.createEngagementAudience(ref(acc), token, { igId, pageId }, 365);

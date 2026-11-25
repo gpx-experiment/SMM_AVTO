@@ -23,7 +23,7 @@ const today = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d;
 
 /** Собирает дневные метрики всех аккаунтов кабинета. */
 export async function syncMetrics(workspaceId: string) {
-  const accounts = await db.account.findMany({ where: { workspaceId } });
+  const accounts = await db.account.findMany({ where: { workspaceId, hidden: false } });
   const errors: string[] = [];
   for (const acc of accounts) {
     const c = connectorFor(acc.provider);
@@ -34,6 +34,17 @@ export async function syncMetrics(workspaceId: string) {
         where: { accountId_date: { accountId: acc.id, date: today() } },
         create: { accountId: acc.id, date: today(), ...m }, update: m,
       });
+      // Вовлечённость за 30 дней по дням публикации: сразу видна история и не задваиваются накопленные значения.
+      if (c.fetchHistory) {
+        for (const d of await c.fetchHistory(ref(acc), await tokenFor(acc), 30)) {
+          const date = new Date(`${d.date}T00:00:00.000Z`);
+          const eng = { likes: d.likes, comments: d.comments, shares: d.shares, ...(d.views !== undefined && acc.provider === "tiktok" ? { views: d.views } : {}) };
+          await db.metricSnapshot.upsert({
+            where: { accountId_date: { accountId: acc.id, date } },
+            create: { accountId: acc.id, date, followers: m.followers, views: 0, reach: 0, saves: 0, ...eng }, update: eng,
+          });
+        }
+      }
     } catch (e) { errors.push(`${acc.name}: ${(e as Error).message}`); }
   }
   return errors;
@@ -69,5 +80,5 @@ export async function publishDue() {
 }
 
 export async function adsAccounts(workspaceId: string) {
-  return (await db.account.findMany({ where: { workspaceId } })).filter(isAdsAccount);
+  return (await db.account.findMany({ where: { workspaceId, hidden: false } })).filter(isAdsAccount);
 }

@@ -19,6 +19,18 @@ export interface TokenSet {
   expiresAt?: Date;
 }
 
+export type DayStats = { date: string /* YYYY-MM-DD, UTC */; views?: number; likes: number; comments: number; shares: number };
+export const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+/** Складывает показатели постов по дню публикации. */
+export function byDay<T>(items: T[], date: (x: T) => Date, f: (x: T) => Omit<DayStats, "date">): DayStats[] {
+  const m = new Map<string, DayStats>();
+  for (const x of items) {
+    const k = dayKey(date(x)); const v = f(x); const cur = m.get(k) ?? { date: k, views: 0, likes: 0, comments: 0, shares: 0 };
+    cur.views = (cur.views ?? 0) + (v.views ?? 0); cur.likes += v.likes; cur.comments += v.comments; cur.shares += v.shares; m.set(k, cur);
+  }
+  return [...m.values()];
+}
+
 export interface DailyMetrics {
   followers: number;
   views: number;
@@ -60,6 +72,8 @@ export interface Connector {
   exchangeCode(code: string): Promise<ConnectedAccount[]>;
   refresh?(refreshToken: string): Promise<TokenSet>;
   fetchDailyMetrics?(acc: AccountRef, token: string): Promise<DailyMetrics>;
+  /** Вовлечённость по дням публикации за последние N дней (лайки, комментарии, репосты, а где есть и просмотры). */
+  fetchHistory?(acc: AccountRef, token: string, days: number): Promise<DayStats[]>;
   publish?(acc: AccountRef, token: string, post: PublishInput): Promise<string>;
   ads?: AdsConnector;
   fetchComments?(acc: AccountRef, token: string): Promise<Comment[]>;

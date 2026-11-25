@@ -11,7 +11,7 @@ const STATUS: Record<string, [string, "mint" | "amber" | "red" | "gray" | "ink"]
 
 export default async function Publish() {
   const ws = await currentWorkspace();
-  const accounts = (await db.account.findMany({ where: { workspaceId: ws.id } })).filter((a) => !a.externalId.startsWith("ads:") && a.provider !== "tiktok_ads");
+  const accounts = (await db.account.findMany({ where: { workspaceId: ws.id, hidden: false } })).filter((a) => !a.externalId.startsWith("ads:") && a.provider !== "tiktok_ads");
   const posts = await db.post.findMany({ where: { workspaceId: ws.id }, orderBy: { createdAt: "desc" }, take: 50, include: { targets: { include: { account: true } } } });
   return (
     <div className="space-y-6">

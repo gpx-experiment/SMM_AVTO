@@ -12,7 +12,7 @@ import { NICHES, nichePreset, type NicheId } from "@/lib/benchmarks";
 
 export async function suggestHashtagsAction(caption: string, accountIds: string[]) {
   const ws = await currentWorkspace();
-  const accounts = await db.account.findMany({ where: { id: { in: accountIds } } });
+  const accounts = await db.account.findMany({ where: { id: { in: accountIds }, hidden: false } });
   const { brief } = await getSettings(ws.id);
   return suggestHashtags(caption, [...new Set(accounts.map((a) => a.provider))], brief);
 }
@@ -37,6 +37,12 @@ export async function searchInterestsAction(accountId: string, q: string) {
 export async function syncNow() {
   const ws = await currentWorkspace();
   await syncMetrics(ws.id);
+  revalidatePath("/", "layout");
+}
+
+export async function setAccountHidden(id: string, hidden: boolean) {
+  const ws = await currentWorkspace();
+  await db.account.updateMany({ where: { id, workspaceId: ws.id }, data: { hidden } });
   revalidatePath("/", "layout");
 }
 

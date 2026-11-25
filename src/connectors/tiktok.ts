@@ -2,7 +2,7 @@
 // Marketing API (реклама, отдельная авторизация через TikTok for Business).
 // Пока приложение не прошло аудит TikTok, видео публикуются только как приватные (SELF_ONLY).
 import { callbackUrl, env } from "@/lib/env";
-import { http, type Connector, type Campaign } from "./types";
+import { http, byDay, type Connector, type Campaign } from "./types";
 
 const OPEN = "https://open.tiktokapis.com/v2";
 const ADS = "https://business-api.tiktok.com/open_api/v1.3";
@@ -41,16 +41,24 @@ export const tiktok: Connector = {
   },
 
   async fetchDailyMetrics(_acc, token) {
-    const auth = { Authorization: `Bearer ${token}` };
-    const u = await http<{ data: { user: { follower_count: number } } }>(`${OPEN}/user/info/?fields=follower_count`, { headers: auth });
+    // Подписчики; просмотры и вовлечённость по дням публикации даёт fetchHistory.
+    const u = await http<{ data: { user: { follower_count: number } } }>(`${OPEN}/user/info/?fields=follower_count`, { headers: { Authorization: `Bearer ${token}` } });
+    return { followers: u.data.user.follower_count, views: 0, reach: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
+  },
+
+  async fetchHistory(_acc, token, days) {
     type V = { create_time: number; view_count: number; like_count: number; comment_count: number; share_count: number };
-    const v = await http<{ data: { videos: V[] } }>(`${OPEN}/video/list/?fields=create_time,view_count,like_count,comment_count,share_count`, {
-      method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ max_count: 20 }),
-    });
-    // TikTok отдаёт накопленные значения по видео; дневную дельту считаем при сохранении снимков.
-    const s = (f: (x: V) => number) => v.data.videos.reduce((a, x) => a + f(x), 0);
-    return { followers: u.data.user.follower_count, views: s((x) => x.view_count), reach: 0, likes: s((x) => x.like_count),
-      comments: s((x) => x.comment_count), shares: s((x) => x.share_count), saves: 0 };
+    const from = Math.floor(Date.now() / 1000) - days * 86400;
+    const videos: V[] = [];
+    for (let cursor: number | undefined, i = 0; i < 10; i++) {
+      const r = await http<{ data: { videos: V[]; cursor?: number; has_more?: boolean } }>(`${OPEN}/video/list/?fields=create_time,view_count,like_count,comment_count,share_count`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ max_count: 20, ...(cursor ? { cursor } : {}) }),
+      });
+      videos.push(...r.data.videos.filter((v) => v.create_time >= from));
+      if (!r.data.has_more || r.data.videos.some((v) => v.create_time < from)) break;
+      cursor = r.data.cursor;
+    }
+    return byDay(videos, (v) => new Date(v.create_time * 1000), (v) => ({ views: v.view_count, likes: v.like_count, comments: v.comment_count, shares: v.share_count }));
   },
 
   async publish(_acc, token, post) {

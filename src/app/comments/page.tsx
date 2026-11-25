@@ -9,7 +9,7 @@ const MOOD: Record<string, [string, "mint" | "amber" | "red" | "gray"]> = {
 
 export default async function Comments() {
   const ws = await currentWorkspace();
-  const accounts = await db.account.findMany({ where: { workspaceId: ws.id } });
+  const accounts = await db.account.findMany({ where: { workspaceId: ws.id, hidden: false } });
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const items = await db.commentItem.findMany({ where: { accountId: { in: accounts.map((a) => a.id) }, status: "new" }, orderBy: { createdAt: "desc" }, take: 50 });
   // Сначала негатив и вопросы: на них важнее ответить быстро

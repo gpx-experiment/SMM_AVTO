@@ -1,7 +1,8 @@
 import { db, currentWorkspace } from "@/lib/db";
 import { AUTH_PROVIDERS } from "@/connectors";
 import { Card, NETWORK, NetDot, PageHeader, Badge, btn, btnGhost } from "@/components/ui";
-import { disconnect } from "../actions";
+import { disconnect, setAccountHidden } from "../actions";
+import type { Account } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,9 @@ const BRAND: Record<string, { bg: string; fg: string; dots: string[] }> = {
 export default async function Accounts({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const { msg } = await searchParams;
   const ws = await currentWorkspace();
-  const accounts = await db.account.findMany({ where: { workspaceId: ws.id }, orderBy: { provider: "asc" } });
+  const accounts = await db.account.findMany({ where: { workspaceId: ws.id }, orderBy: [{ provider: "asc" }, { name: "asc" }] });
+  const visible = accounts.filter((a) => !a.hidden);
+  const hidden = accounts.filter((a) => a.hidden);
   return (
     <div className="space-y-6">
       <PageHeader title="Аккаунты" subtitle="Подключение через официальный вход. Пароли не хранятся, токены зашифрованы." />
@@ -36,27 +39,40 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
           );
         })}
       </div>
-      <Card title="Подключённые" action={<Badge tone={accounts.length ? "mint" : "gray"}>{accounts.length}</Badge>}>
-        {!accounts.length ? <p className="text-sm text-mute">Пока ничего не подключено.</p> : (
-          <ul className="divide-y divide-line">
-            {accounts.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper"><NetDot provider={a.provider} size={12} /></span>
-                  <span className="min-w-0">
-                    <b className="block">{NETWORK[a.provider]?.label} · {a.name}</b>
-                    <span className="text-xs text-mute">{a.tokenExpiresAt ? `Доступ до ${a.tokenExpiresAt.toLocaleString("ru-RU")}` : "Доступ активен"}</span>
-                  </span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <Badge tone="mint">Подключено</Badge>
-                  <form action={disconnect.bind(null, a.id)}><button className={btnGhost}>Отключить</button></form>
-                </span>
-              </li>
-            ))}
-          </ul>
+      <Card title="Подключённые" action={<Badge tone={visible.length ? "mint" : "gray"}>{visible.length}</Badge>}>
+        {!accounts.length ? <p className="text-sm text-mute">Пока ничего не подключено.</p>
+          : !visible.length ? <p className="text-sm text-mute">Все аккаунты скрыты. Верните нужные из списка ниже.</p>
+          : (
+          <>
+            <p className="mb-2 text-xs text-mute">Ненужные страницы можно скрыть: они пропадут из дашборда, публикаций, рекламы, комментариев и анализа ИИ. Данные и доступ сохранятся, вернуть можно в любой момент.</p>
+            <ul className="divide-y divide-line">{visible.map((a) => <Row key={a.id} a={a} />)}</ul>
+          </>
         )}
       </Card>
+      {hidden.length > 0 && (
+        <Card title="Скрытые" action={<Badge tone="gray">{hidden.length}</Badge>}>
+          <ul className="divide-y divide-line opacity-70">{hidden.map((a) => <Row key={a.id} a={a} />)}</ul>
+        </Card>
+      )}
     </div>
+  );
+}
+
+function Row({ a }: { a: Account }) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper"><NetDot provider={a.provider} size={12} /></span>
+        <span className="min-w-0">
+          <b className="block">{NETWORK[a.provider]?.label} · {a.name}</b>
+          <span className="text-xs text-mute">{a.tokenExpiresAt ? `Доступ до ${a.tokenExpiresAt.toLocaleString("ru-RU")}` : "Доступ активен"}</span>
+        </span>
+      </span>
+      <span className="flex items-center gap-3">
+        {a.hidden ? <Badge tone="gray">Скрыт</Badge> : <Badge tone="mint">Подключено</Badge>}
+        <form action={setAccountHidden.bind(null, a.id, !a.hidden)}><button className={a.hidden ? btn : btnGhost}>{a.hidden ? "Показать" : "Скрыть"}</button></form>
+        <form action={disconnect.bind(null, a.id)}><button className={btnGhost}>Отключить</button></form>
+      </span>
+    </li>
   );
 }

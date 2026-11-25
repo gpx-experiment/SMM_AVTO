@@ -25,7 +25,7 @@ export default async function Dashboard() {
   const ws = await currentWorkspace();
   const since = new Date(Date.now() - 30 * 86400000);
   const accounts = (await db.account.findMany({
-    where: { workspaceId: ws.id }, include: { metrics: { where: { date: { gte: since } }, orderBy: { date: "asc" } } },
+    where: { workspaceId: ws.id, hidden: false }, include: { metrics: { where: { date: { gte: since } }, orderBy: { date: "asc" } } },
   })).filter((a) => a.metrics.length);
 
   if (!accounts.length) {
@@ -84,10 +84,15 @@ export default async function Dashboard() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {accounts.map((a) => {
+        {[...accounts].sort((x, y) => y.metrics.at(-1)!.followers - x.metrics.at(-1)!.followers).map((a) => {
           const last = a.metrics.at(-1)!;
           const first = a.metrics[0];
-          const er = last.views ? ((last.likes + last.comments + last.shares + last.saves) / last.views) * 100 : 0;
+          // Карточка показывает сумму за 30 дней, а не только сегодняшний день.
+          const sum = (f: (m: (typeof a.metrics)[number]) => number) => a.metrics.reduce((x, m) => x + f(m), 0);
+          const t = { views: sum((m) => m.views), likes: sum((m) => m.likes), comments: sum((m) => m.comments), shares: sum((m) => m.shares), saves: sum((m) => m.saves), dislikes: a.metrics.some((m) => m.dislikes != null) ? sum((m) => m.dislikes ?? 0) : null };
+          const engSum = t.likes + t.comments + t.shares + t.saves;
+          // Где сеть не отдаёт просмотры (страницы Facebook), считаем вовлечённость от подписчиков.
+          const er = t.views ? (engSum / t.views) * 100 : last.followers ? (engSum / last.followers) * 100 : 0;
           const color = NETWORK[a.provider]?.color ?? "#64748b";
           const g = pct(last.followers, first.followers);
           return (
@@ -100,11 +105,11 @@ export default async function Dashboard() {
               <div className="text-xs text-mute">подписчиков</div>
               <div className="my-3"><Spark values={a.metrics.map((m) => m.views)} color={color} /></div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-line pt-3 text-[13px]">
-                <dt className="text-mute">Просмотры</dt><dd className="text-right font-semibold">{fmt(last.views)}</dd>
-                <dt className="text-mute">{a.provider === "facebook" ? "Реакции" : "Лайки"}</dt><dd className="text-right font-semibold">{fmt(last.likes)}</dd>
-                {last.dislikes != null && <><dt className="text-mute">Дизлайки</dt><dd className="text-right font-semibold">{fmt(last.dislikes)}</dd></>}
-                <dt className="text-mute">Комментарии</dt><dd className="text-right font-semibold">{fmt(last.comments)}</dd>
-                <dt className="text-mute">Репосты</dt><dd className="text-right font-semibold">{fmt(last.shares)}</dd>
+                <dt className="text-mute">Просмотры</dt><dd className="text-right font-semibold">{fmt(t.views)}</dd>
+                <dt className="text-mute">{a.provider === "facebook" ? "Реакции" : "Лайки"}</dt><dd className="text-right font-semibold">{fmt(t.likes)}</dd>
+                {t.dislikes != null && <><dt className="text-mute">Дизлайки</dt><dd className="text-right font-semibold">{fmt(t.dislikes)}</dd></>}
+                <dt className="text-mute">Комментарии</dt><dd className="text-right font-semibold">{fmt(t.comments)}</dd>
+                <dt className="text-mute">Репосты</dt><dd className="text-right font-semibold">{fmt(t.shares)}</dd>
                 <dt className="text-mute">Вовлечённость</dt><dd className="text-right font-semibold">{er.toFixed(1)}%</dd>
               </dl>
             </Card>

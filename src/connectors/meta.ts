@@ -3,7 +3,7 @@
 // В режиме разработки работает без проверки для людей с ролью в приложении.
 // Приложение типа «Бизнес» использует Facebook Login for Business: тогда задайте META_CONFIG_ID (ID конфигурации входа).
 import { callbackUrl, env } from "@/lib/env";
-import { http, type Connector, type ConnectedAccount, type DailyMetrics, type Campaign } from "./types";
+import { http, byDay, type Connector, type ConnectedAccount, type DailyMetrics, type Campaign } from "./types";
 
 const V = (env("META_API_VERSION") || "v23.0");
 const G = `https://graph.facebook.com/${V}`;
@@ -14,6 +14,17 @@ const SCOPES = [
 ].join(",");
 
 const q_ = (p: Record<string, string | number>) => new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)])).toString();
+/** Листает выдачу Graph API, пока записи не старше `from` (до 10 страниц). */
+async function pages<T>(url: string, from: number, ts: (x: T) => string): Promise<T[]> {
+  const out: T[] = [];
+  for (let next: string | undefined = url, i = 0; next && i < 10; i++) {
+    const r: { data: T[]; paging?: { next?: string } } = await http(next);
+    out.push(...r.data.filter((x) => new Date(ts(x)).getTime() / 1000 >= from));
+    if (r.data.some((x) => new Date(ts(x)).getTime() / 1000 < from)) break;
+    next = r.paging?.next;
+  }
+  return out;
+}
 const since = () => Math.floor(Date.now() / 1000) - 86400;
 
 type Page = {
@@ -65,17 +76,23 @@ export const meta: Connector = {
       const v = (n: string) => ins.data.find((m) => m.name === n)?.total_value?.value ?? 0;
       return { followers: prof.followers_count, views: v("views"), reach: v("reach"), likes: v("likes"), comments: v("comments"), shares: v("shares"), saves: v("saves") };
     }
-    // Facebook-страница: суммируем реакции/комментарии/репосты постов за сутки.
+    // Facebook-страница: подписчики; реакции/комментарии/репосты по дням даёт fetchHistory.
     const page = await http<{ followers_count?: number }>(`${G}/${acc.externalId}?${q_({ fields: "followers_count", access_token: token })}`);
-    const posts = await http<{ data: { reactions?: { summary: { total_count: number } }; comments?: { summary: { total_count: number } }; shares?: { count: number } }[] }>(
-      `${G}/${acc.externalId}/posts?${q_({ fields: "reactions.summary(true).limit(0),comments.summary(true).limit(0),shares", since: since(), access_token: token })}`);
-    const sum = (f: (p: (typeof posts.data)[number]) => number) => posts.data.reduce((a, p) => a + f(p), 0);
-    return {
-      followers: page.followers_count ?? 0, views: 0, reach: 0, saves: 0,
-      likes: sum((p) => p.reactions?.summary.total_count ?? 0),
-      comments: sum((p) => p.comments?.summary.total_count ?? 0),
-      shares: sum((p) => p.shares?.count ?? 0),
-    };
+    return { followers: page.followers_count ?? 0, views: 0, reach: 0, saves: 0, likes: 0, comments: 0, shares: 0 };
+  },
+
+  async fetchHistory(acc, token, days) {
+    const from = Math.floor(Date.now() / 1000) - days * 86400;
+    if (acc.provider === "instagram") {
+      type M = { timestamp: string; like_count?: number; comments_count?: number };
+      const items = await pages<M>(`${G}/${acc.externalId}/media?${q_({ fields: "timestamp,like_count,comments_count", since: from, limit: 100, access_token: token })}`, from, (m) => m.timestamp);
+      return byDay(items, (m) => new Date(m.timestamp), (m) => ({ likes: m.like_count ?? 0, comments: m.comments_count ?? 0, shares: 0 }));
+    }
+    type P = { created_time: string; reactions?: { summary: { total_count: number } }; comments?: { summary: { total_count: number } }; shares?: { count: number } };
+    const items = await pages<P>(`${G}/${acc.externalId}/posts?${q_({
+      fields: "created_time,reactions.summary(true).limit(0),comments.summary(true).limit(0),shares", since: from, limit: 100, access_token: token })}`, from, (p) => p.created_time);
+    return byDay(items, (p) => new Date(p.created_time), (p) => ({
+      likes: p.reactions?.summary.total_count ?? 0, comments: p.comments?.summary.total_count ?? 0, shares: p.shares?.count ?? 0 }));
   },
 
   async publish(acc, token, post) {

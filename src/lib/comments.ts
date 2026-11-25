@@ -21,7 +21,7 @@ function demoDraft(text: string) {
 }
 
 export async function syncComments(workspaceId: string) {
-  const accounts = await db.account.findMany({ where: { workspaceId } });
+  const accounts = await db.account.findMany({ where: { workspaceId, hidden: false } });
   const fresh: { id: string; text: string; author: string; post: string }[] = [];
   for (const acc of accounts) {
     const c = connectorFor(acc.provider);

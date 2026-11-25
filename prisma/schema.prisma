@@ -32,6 +32,7 @@ model Account {
   refreshTokenEnc String?
   tokenExpiresAt DateTime?
   adAccountId    String? // рекламный кабинет (Meta act_..., TikTok advertiser_id, Google Ads customer)
+  hidden         Boolean   @default(false) // скрыт пользователем: не показывается в дашборде, публикации, рекламе и ИИ
   createdAt      DateTime  @default(now())
   metrics        MetricSnapshot[]
   targets        PostTarget[]
