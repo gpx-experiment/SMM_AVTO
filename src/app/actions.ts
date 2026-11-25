@@ -45,6 +45,19 @@ export async function syncNow() {
   revalidatePath("/", "layout");
 }
 
+/** Выбор продвигаемых аккаунтов: отмеченные видны везде, остальные скрываются. Затем обновляет их статистику. */
+export async function setPromoted(formData: FormData) {
+  const ws = await currentWorkspace();
+  const ids = formData.getAll("promote").map(String);
+  await db.account.updateMany({ where: { workspaceId: ws.id, id: { in: ids } }, data: { hidden: false } });
+  await db.account.updateMany({ where: { workspaceId: ws.id, id: { notIn: ids } }, data: { hidden: true } });
+  const errors = await syncMetrics(ws.id);
+  const jar = await cookies();
+  if (errors.length) jar.set("syncErrors", JSON.stringify(errors.map((e) => e.slice(0, 200)).slice(0, 8)), { maxAge: 600, httpOnly: true, sameSite: "lax", secure: true });
+  else jar.delete("syncErrors");
+  revalidatePath("/", "layout");
+}
+
 export async function setAccountHidden(id: string, hidden: boolean) {
   const ws = await currentWorkspace();
   await db.account.updateMany({ where: { id, workspaceId: ws.id }, data: { hidden } });

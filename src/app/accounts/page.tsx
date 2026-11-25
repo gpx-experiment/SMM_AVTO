@@ -1,7 +1,7 @@
 import { db, currentWorkspace } from "@/lib/db";
 import { AUTH_PROVIDERS } from "@/connectors";
 import { Card, NETWORK, NetDot, PageHeader, Badge, btn, btnGhost } from "@/components/ui";
-import { disconnect, setAccountHidden } from "../actions";
+import { disconnect, setAccountHidden, setPromoted } from "../actions";
 import type { Account } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,23 @@ export default async function Accounts({ searchParams }: { searchParams: Promise
           );
         })}
       </div>
+      {accounts.length > 0 && (
+        <Card title="Что продвигать" action={<Badge tone="mint">{visible.length} из {accounts.length}</Badge>}>
+          <p className="mb-3 text-xs text-mute">Отметьте страницы, которые продвигаете. По ним строятся дашборд, публикации, реклама, комментарии и анализ ИИ; остальные скроются (данные и доступ сохранятся). После сохранения статистика выбранных обновится, это займёт до минуты.</p>
+          <form action={setPromoted}>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {accounts.map((a) => (
+                <label key={a.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2 text-sm has-[:checked]:border-ink has-[:checked]:bg-mint/40">
+                  <input type="checkbox" name="promote" value={a.id} defaultChecked={!a.hidden} className="h-4 w-4 accent-ink" />
+                  <NetDot provider={a.provider} size={10} />
+                  <span className="min-w-0 truncate">{NETWORK[a.provider]?.label} · {a.name}</span>
+                </label>
+              ))}
+            </div>
+            <button className={`${btn} mt-4`}>Сохранить выбор и обновить статистику</button>
+          </form>
+        </Card>
+      )}
       <Card title="Подключённые" action={<Badge tone={visible.length ? "mint" : "gray"}>{visible.length}</Badge>}>
         {!accounts.length ? <p className="text-sm text-mute">Пока ничего не подключено.</p>
           : !visible.length ? <p className="text-sm text-mute">Все аккаунты скрыты. Верните нужные из списка ниже.</p>

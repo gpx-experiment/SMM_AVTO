@@ -36,7 +36,14 @@ export async function syncMetrics(workspaceId: string) {
       });
       // Вовлечённость за 30 дней по дням публикации: сразу видна история и не задваиваются накопленные значения.
       if (c.fetchHistory) {
-        for (const d of await c.fetchHistory(ref(acc), await tokenFor(acc), 30)) {
+        const history = await c.fetchHistory(ref(acc), await tokenFor(acc), 30);
+        // История — единственный источник вовлечённости за окно: обнуляем старые значения
+        // (в т.ч. накопительные снимки прежних версий), иначе они задваиваются с историей.
+        await db.metricSnapshot.updateMany({
+          where: { accountId: acc.id, date: { gte: new Date(today().getTime() - 30 * 86400000) } },
+          data: { likes: 0, comments: 0, shares: 0, ...(acc.provider === "tiktok" ? { views: 0 } : {}) },
+        });
+        for (const d of history) {
           const date = new Date(`${d.date}T00:00:00.000Z`);
           const eng = { likes: d.likes, comments: d.comments, shares: d.shares, ...(d.views !== undefined && acc.provider === "tiktok" ? { views: d.views } : {}) };
           await db.metricSnapshot.upsert({
