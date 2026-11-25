@@ -3,6 +3,11 @@ import { db, currentWorkspace } from "@/lib/db";
 import { Card, NETWORK, NetDot, PageHeader, Badge, fmt, fmtShort, btn, btnGhost } from "@/components/ui";
 import { TrendChart } from "@/components/TrendChart";
 import { syncNow } from "./actions";
+import { cookies } from "next/headers";
+
+async function syncErrors(): Promise<string[]> {
+  try { return JSON.parse((await cookies()).get("syncErrors")?.value ?? "[]"); } catch { return []; }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +59,7 @@ export default async function Dashboard() {
   const followers0 = accounts.reduce((s, a) => s + a.metrics[0].followers, 0);
   const views = accounts.reduce((s, a) => s + a.metrics.reduce((x, m) => x + m.views, 0), 0);
   const eng = accounts.reduce((s, a) => s + a.metrics.reduce((x, m) => x + m.likes + m.comments + m.shares + m.saves, 0), 0);
+  const errs = await syncErrors();
   const pending = await db.proposal.count({ where: { status: "pending", run: { workspaceId: ws.id } } });
 
   return (
@@ -63,6 +69,13 @@ export default async function Dashboard() {
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3M4 4v4h4M20 20v-4h-4" /></svg>
           Обновить статистику</button></form>
       </PageHeader>
+
+      {errs.length > 0 && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          <div className="font-semibold">Не все аккаунты обновились ({errs.length}):</div>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 break-words">{errs.map((e, i) => <li key={i}>{e}</li>)}</ul>
+        </div>
+      )}
 
       <section className="grid overflow-hidden rounded-2xl bg-ink text-white md:grid-cols-4 md:divide-x md:divide-white/10">
         {[

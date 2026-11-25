@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { db, currentWorkspace } from "@/lib/db";
 import { adsAccounts, publishPost, syncMetrics } from "@/lib/services";
 import { executeProposal, runAgent } from "@/lib/ai";
@@ -36,7 +37,11 @@ export async function searchInterestsAction(accountId: string, q: string) {
 
 export async function syncNow() {
   const ws = await currentWorkspace();
-  await syncMetrics(ws.id);
+  const errors = await syncMetrics(ws.id);
+  // Ошибки пишутся в логи Railway (в syncMetrics) и показываются на дашборде 10 минут.
+  const jar = await cookies();
+  if (errors.length) jar.set("syncErrors", JSON.stringify(errors.map((e) => e.slice(0, 200)).slice(0, 8)), { maxAge: 600, httpOnly: true, sameSite: "lax", secure: true });
+  else jar.delete("syncErrors");
   revalidatePath("/", "layout");
 }
 

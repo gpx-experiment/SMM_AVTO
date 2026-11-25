@@ -45,7 +45,11 @@ export async function syncMetrics(workspaceId: string) {
           });
         }
       }
-    } catch (e) { errors.push(`${acc.name}: ${(e as Error).message}`); }
+    } catch (e) {
+      const msg = `${acc.provider} · ${acc.name}: ${(e as Error).message}`;
+      console.error("[sync]", msg); // токены в текст не попадают: http() отрезает query-строку
+      errors.push(msg);
+    }
   }
   return errors;
 }
