@@ -93,7 +93,8 @@ export async function publishDue() {
 /** Данные для создания кампании: пиксель, страница и канал переписки для цели «Сообщения» */
 export async function campaignExtras(workspaceId: string, s: { pixelId: string; messageChannel: string }) {
   const page = await db.account.findFirst({ where: { workspaceId, hidden: false, provider: "facebook", NOT: { externalId: { startsWith: "ads:" } } } });
-  return { pixelId: s.pixelId, pageId: page?.externalId, messageChannel: s.messageChannel as MessageChannel };
+  const ig = await db.account.findFirst({ where: { workspaceId, hidden: false, provider: "instagram" } });
+  return { pixelId: s.pixelId, pageId: page?.externalId, igId: ig?.externalId, messageChannel: s.messageChannel as MessageChannel };
 }
 
 export async function adsAccounts(workspaceId: string) {

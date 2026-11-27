@@ -3,7 +3,7 @@
 // В режиме разработки работает без проверки для людей с ролью в приложении.
 // Приложение типа «Бизнес» использует Facebook Login for Business: тогда задайте META_CONFIG_ID (ID конфигурации входа).
 import { callbackUrl, env } from "@/lib/env";
-import { http, byDay, type Connector, type ConnectedAccount, type DailyMetrics, type Campaign } from "./types";
+import { http, byDay, type Connector, type ConnectedAccount, type DailyMetrics, type Campaign, type Conversation } from "./types";
 
 // Действия, которые считаем заявкой: начатая переписка и лид (форма или пиксель)
 const LEAD_ACTIONS = ["onsite_conversion.messaging_conversation_started_7d", "lead"];
@@ -17,6 +17,8 @@ const SCOPES = [
   "pages_show_list", "pages_read_engagement", "pages_manage_posts", "read_insights",
   "instagram_basic", "instagram_content_publish", "instagram_manage_insights",
   "ads_management", "ads_read", "business_management",
+  // Раздел «Заявки»: чтение переписок Direct и Messenger
+  "pages_messaging", "pages_manage_metadata", "instagram_manage_messages",
 ].join(",");
 
 const q_ = (p: Record<string, string | number>) => new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)])).toString();
@@ -145,7 +147,60 @@ export const meta: Connector = {
     await http(`${G}/${commentId}/${edge}`, { method: "POST", body: new URLSearchParams({ message: text, access_token: token }) });
   },
 
+  async fetchConversations(acc, token, platform, own): Promise<Conversation[]> {
+    type Msg = { message?: string; created_time: string; from?: { id?: string; username?: string; name?: string } };
+    type Row = { id: string; updated_time: string; participants?: { data: { id?: string; username?: string; name?: string }[] }; messages?: { data: Msg[] } };
+    const r = await http<{ data: Row[] }>(`${G}/${acc.externalId}/conversations?${q_({
+      platform, fields: "id,updated_time,participants,messages.limit(10){message,from,created_time}", limit: 25, access_token: token })}`);
+    const mine = (p?: { id?: string; username?: string }) => !!p && (own.includes(p.id ?? "") || own.includes(p.username ?? ""));
+    return r.data.map((c) => {
+      const msgs = [...(c.messages?.data ?? [])].reverse(); // API отдаёт от новых к старым
+      const customer = msgs.filter((m) => !mine(m.from) && m.message);
+      const who = (c.participants?.data ?? []).find((p) => !mine(p));
+      const last = msgs.at(-1);
+      return { id: c.id, platform, name: who?.username ? `@${who.username}` : who?.name ?? "Без имени", updatedAt: new Date(c.updated_time),
+        firstText: customer[0]?.message ?? "", lastText: last?.message ?? "", lastFromCustomer: !!last && !mine(last.from),
+        customerMessages: customer.map((m) => ({ text: m.message!, at: new Date(m.created_time) })) };
+    });
+  },
+
   ads: {
+    async createAds(acc, token, input) {
+      // Картинку загружаем в кабинет один раз, затем по объявлению на каждый текст в каждой группе кампании.
+      // Группы и объявления включаем, а кампания остаётся на паузе: показы начнутся только после кнопки «Запустить».
+      const img = await fetch(input.imageUrl);
+      if (!img.ok) throw new Error(`Картинка не открывается по ссылке (${img.status})`);
+      const bytes = Buffer.from(await img.arrayBuffer());
+      if (bytes.length > 8_000_000) throw new Error("Картинка больше 8 МБ");
+      const up = await http<{ images: Record<string, { hash: string }> }>(`${G}/${acc.adAccountId}/adimages`, { method: "POST", body: new URLSearchParams({ bytes: bytes.toString("base64"), access_token: token }) });
+      const hash = Object.values(up.images)[0]?.hash;
+      if (!hash) throw new Error("Meta не приняла картинку");
+      const CTA = {
+        instagram: { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT", link: "https://www.instagram.com" } },
+        whatsapp: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP", link: "https://api.whatsapp.com/send" } },
+        messenger: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER", link: "https://fb.com/messenger_doc/" } },
+      }[input.messageChannel];
+      const welcome = input.greeting && input.iceBreakers?.length ? JSON.stringify({ type: "VISUAL_EDITOR", version: 2, landing_screen_type: "welcome_message", media_type: "text",
+        text_format: { customer_action_type: "ice_breakers", message: { text: input.greeting, ice_breakers: input.iceBreakers.slice(0, 4).map((title) => ({ title })) } } }) : null;
+      const sets = await http<{ data: { id: string }[] }>(`${G}/${input.campaignId}/adsets?${q_({ fields: "id", limit: 50, access_token: token })}`);
+      if (!sets.data.length) throw new Error("В кампании нет групп объявлений");
+      const creative = async (text: string, n: number, withWelcome: boolean) => (await http<{ id: string }>(`${G}/${acc.adAccountId}/adcreatives`, { method: "POST", body: new URLSearchParams({
+        name: `Креатив ${n + 1}`, access_token: token,
+        object_story_spec: JSON.stringify({ page_id: input.pageId, ...(input.igId ? { instagram_user_id: input.igId } : {}),
+          link_data: { message: text, image_hash: hash, link: CTA.value.link, call_to_action: CTA, ...(withWelcome && welcome ? { page_welcome_message: welcome } : {}) } }),
+      }) })).id;
+      let made = 0;
+      for (const [n, text] of input.texts.entries()) {
+        // Подсказки первого сообщения Meta принимает не для всех страниц: если отклонила, создаём объявление без них
+        const id = await creative(text, n, true).catch((e) => { if (!welcome) throw e; return creative(text, n, false); });
+        for (const s of sets.data) {
+          await http(`${G}/${acc.adAccountId}/ads`, { method: "POST", body: new URLSearchParams({ name: `Объявление ${n + 1}`, adset_id: s.id, creative: JSON.stringify({ creative_id: id }), status: "ACTIVE", access_token: token }) });
+          made++;
+        }
+      }
+      for (const s of sets.data) await http(`${G}/${s.id}`, { method: "POST", body: new URLSearchParams({ status: "ACTIVE", access_token: token }) });
+      return made;
+    },
     async listCampaigns(acc, token): Promise<Campaign[]> {
       type Row = { id: string; name: string; status: string; effective_status?: string; objective?: string; daily_budget?: string;
         adsets?: { data: AdSetRow[] }; ads?: { data: { effective_status: string }[] };

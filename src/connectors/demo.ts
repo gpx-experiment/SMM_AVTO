@@ -57,6 +57,10 @@ export function demoConnector(auth: AuthProvider): Connector {
     publish: async () => `demo-${Date.now()}`,
     fetchComments: async (acc) => !["instagram", "facebook"].includes(acc.provider) || acc.externalId.startsWith("ads:") ? [] : DEMO_COMMENTS.map((c, i) => ({ ...c, id: `${acc.externalId}-c${i}`, createdAt: new Date(Date.now() - (i + 1) * 3600_000) })),
     replyComment: async () => {},
+    fetchConversations: async (_a, _t, platform) => platform !== "instagram" ? [] : [
+      { id: "demo-conv-1", platform, name: "@elvin.m", updatedAt: new Date(), firstText: "Salam, İcbari neçəyədir? Toyota Prius 2014 · S01", lastText: "Salam, İcbari neçəyədir? Toyota Prius 2014 · S01", lastFromCustomer: true, customerMessages: [{ text: "Salam, İcbari neçəyədir? Toyota Prius 2014 · S01", at: new Date() }] },
+      { id: "demo-conv-2", platform, name: "@aysel_k", updatedAt: new Date(), firstText: "KASKO haqqında məlumat ala bilərəm?", lastText: "KASKO haqqında məlumat ala bilərəm?", lastFromCustomer: true, customerMessages: [{ text: "KASKO haqqında məlumat ala bilərəm?", at: new Date() }] },
+    ],
     ads: {
       searchInterests: async (_a, _t, q) => INTERESTS.filter(([, n]) => n.toLowerCase().includes(q.toLowerCase()))
         .map(([id, name, audienceSize]) => ({ id, name, audienceSize })),
@@ -64,6 +68,7 @@ export function demoConnector(auth: AuthProvider): Connector {
       summary: async (acc) => ({ monthSpend: list(acc.adAccountId!).reduce((s, c) => s + (c.spend ?? 0), 0) * 2.1, currency: "USD" }),
       setStatus: async (acc, _t, id, active) => { const c = list(acc.adAccountId!).find((x) => x.id === id); if (c) c.status = active ? "ACTIVE" : "PAUSED"; },
       setDailyBudget: async (acc, _t, id, b) => { const c = list(acc.adAccountId!).find((x) => x.id === id); if (c) c.dailyBudget = b; },
+      createAds: async (acc, _t, input) => { const c = list(acc.adAccountId!).find((x) => x.id === input.campaignId); if (c) c.delivery = "PAUSED"; return input.texts.length; },
       createEngagementAudience: async () => `aud-${Date.now()}`,
       createLookalike: async () => `lal-${Date.now()}`,
       createCampaign: async (acc, _t, { name, dailyBudget, audiences, objective }) => {
