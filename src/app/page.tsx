@@ -4,6 +4,7 @@ import { Card, NETWORK, NetDot, PageHeader, Badge, fmt, fmtShort, btn, btnGhost 
 import { TrendChart } from "@/components/TrendChart";
 import { syncNow } from "./actions";
 import { cookies } from "next/headers";
+import { adsOverview, healthAlerts } from "@/lib/health";
 
 async function syncErrors(): Promise<string[]> {
   try { return JSON.parse((await cookies()).get("syncErrors")?.value ?? "[]"); } catch { return []; }
@@ -61,6 +62,9 @@ export default async function Dashboard() {
   const eng = accounts.reduce((s, a) => s + a.metrics.reduce((x, m) => x + m.likes + m.comments + m.shares + m.saves, 0), 0);
   const errs = await syncErrors();
   const pending = await db.proposal.count({ where: { status: "pending", run: { workspaceId: ws.id } } });
+  // Сторож: что мешает рекламе и ИИ работать. Сбой самой проверки не должен ронять дашборд.
+  const ads = await adsOverview(ws.id).catch(() => undefined);
+  const alerts = await healthAlerts(ws.id, ads).catch(() => []);
 
   return (
     <div className="space-y-6">
@@ -75,6 +79,27 @@ export default async function Dashboard() {
           <div className="font-semibold">Не все аккаунты обновились ({errs.length}):</div>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 break-words">{errs.map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>
+      )}
+
+      {alerts.length > 0 && (
+        <div className="rounded-2xl border border-line bg-white p-4 text-sm">
+          <div className="mb-2 font-display text-base font-extrabold">Требует внимания: {alerts.length}</div>
+          <ul className="space-y-1.5">
+            {alerts.map((a, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.level === "red" ? "bg-red-500" : "bg-amber-400"}`} />
+                <Link href={a.href} className="hover:underline">{a.text}</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {ads && ads.campaigns.length > 0 && (
+        <Link href="/ads" className="grid gap-4 rounded-2xl border border-line bg-white p-5 text-sm sm:grid-cols-4">
+          {[["Реклама: расход за 7 дней", ads.spend.toFixed(2)], ["Заявки за 7 дней", String(ads.leads)], ["Цена заявки", ads.leads ? (ads.spend / ads.leads).toFixed(2) : "—"], ["Потрачено в этом месяце", ads.monthSpend != null ? ads.monthSpend.toFixed(2) : "—"]].map(([l, v]) => (
+            <div key={l}><div className="text-mute">{l}</div><div className="font-display text-2xl font-extrabold">{v.replace(".", ",")}</div></div>
+          ))}
+        </Link>
       )}
 
       <section className="grid overflow-hidden rounded-2xl bg-ink text-white md:grid-cols-4 md:divide-x md:divide-white/10">

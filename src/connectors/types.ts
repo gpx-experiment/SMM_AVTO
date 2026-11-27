@@ -58,7 +58,18 @@ export interface Campaign {
   clicks?: number;
   targeting?: Targeting;
   objective?: Objective;
+  /** Заявки за 7 дней: начатые переписки (WhatsApp, Direct, Messenger) и лиды */
+  leads?: number;
+  /** Кампания нацелена на заявки (переписки, лиды, конверсии): её судят по цене заявки, а не по CTR */
+  leadGoal?: boolean;
+  /** Состояние показа: ACTIVE, PAUSED, IN_REVIEW, DISAPPROVED, WITH_ISSUES, NO_ADS... */
+  delivery?: string;
+  /** Где задан бюджет: на кампании или на группах объявлений */
+  budgetLevel?: "campaign" | "adset";
 }
+
+/** Сводка рекламного кабинета за текущий месяц */
+export interface AdsSummary { monthSpend: number; currency?: string; capLeft?: number }
 
 /** Ссылка на аккаунт, с которым работает коннектор */
 export interface AccountRef {
@@ -89,7 +100,9 @@ export interface Targeting {
   interests: { id: string; name: string }[];
 }
 
-export type Objective = "engagement" | "traffic" | "sales";
+export type Objective = "engagement" | "traffic" | "sales" | "messages";
+/** Куда ведёт кампания «Сообщения» */
+export type MessageChannel = "whatsapp" | "instagram" | "messenger";
 
 export interface CampaignInput {
   name: string;
@@ -99,6 +112,9 @@ export interface CampaignInput {
   audiences?: (Targeting & { label?: string; customAudienceIds?: string[] })[];
   pixelId?: string;
   link?: string;
+  /** Для цели «Сообщения»: Facebook-страница и канал переписки */
+  pageId?: string;
+  messageChannel?: MessageChannel;
 }
 
 export interface Comment { id: string; author: string; text: string; createdAt: Date; postCaption: string }
@@ -116,6 +132,8 @@ export interface AdsConnector {
   createEngagementAudience?(acc: AccountRef, token: string, sources: { igId?: string; pageId?: string }, days: number): Promise<string>;
   /** Похожая аудитория */
   createLookalike?(acc: AccountRef, token: string, originAudienceId: string, country: string, ratio: number): Promise<string>;
+  /** Расход кабинета за текущий месяц и остаток лимита затрат */
+  summary?(acc: AccountRef, token: string): Promise<AdsSummary>;
 }
 
 export async function http<T>(url: string, init?: RequestInit): Promise<T> {

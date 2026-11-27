@@ -1,7 +1,9 @@
 import { db, currentWorkspace } from "@/lib/db";
 import { getSettings } from "@/lib/ai";
+import { telegramReady } from "@/lib/health";
+import { Flash } from "@/components/Flash";
 import { Card, PageHeader, Badge, btn, btnGhost, btnMint, input, label } from "@/components/ui";
-import { applyNichePreset, approveProposal, rejectProposal, runAiNow, saveAiSettings } from "../actions";
+import { applyNichePreset, approveProposal, rejectProposal, runAiNow, saveAiSettings, sendReportNow } from "../actions";
 import { NICHES, SRC, IG_ER, type NicheId } from "@/lib/benchmarks";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +11,7 @@ const STATUS: Record<string, [string, "mint" | "amber" | "red" | "gray" | "ink"]
   pending: ["Ждёт решения", "amber"], executed: ["Выполнено", "mint"], approved: ["Подтверждено", "mint"], rejected: ["Отклонено", "gray"], failed: ["Ошибка", "red"], blocked: ["Заблокировано лимитом", "red"],
 };
 const KIND: Record<string, string> = { post: "Пост", create_campaign: "Новая кампания", set_budget: "Бюджет", pause: "Пауза рекламы", resume: "Запуск рекламы", create_retargeting: "Ретаргетинг", create_lookalike: "Look-alike" };
-const OBJECTIVE: Record<string, string> = { engagement: "Вовлечение", traffic: "Трафик", sales: "Продажи" };
+const OBJECTIVE: Record<string, string> = { engagement: "Вовлечение", traffic: "Трафик", sales: "Продажи", messages: "Заявки в переписку" };
 const FUNNEL: Record<string, string> = { TOFU: "Охват (TOFU)", MOFU: "Прогрев (MOFU)", BOFU: "Продажа (BOFU)" };
 const GENDER: Record<string, string> = { all: "все", male: "мужчины", female: "женщины" };
 
@@ -24,6 +26,7 @@ export default async function AiPage() {
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M12 2l2.4 6.1L20.5 10l-6.1 2.4L12 18.5l-2.4-6.1L3.5 10l6.1-1.9z" /></svg>
           Проанализировать и предложить план</button></form>
       </PageHeader>
+      <Flash />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="order-2 space-y-6 xl:order-1">
@@ -37,7 +40,7 @@ export default async function AiPage() {
             <Card key={r.id}
               title={<span className="flex items-center gap-2">{r.status === "running" && <span className="pulse h-2.5 w-2.5 rounded-full bg-[#18c47a]" />}Запуск {r.createdAt.toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</span>}
               action={r.status === "failed" ? <Badge tone="red">Ошибка</Badge> : <Badge tone="mint">{r.proposals.length} предложений</Badge>}>
-              {r.error && <p className="mb-3 rounded-xl bg-[#ffd2d2] px-3 py-2 text-sm">{r.error}</p>}
+              {r.error && <p className="mb-3 rounded-xl bg-[#ffd2d2] px-3 py-2 text-sm">{r.error.includes("Could not resolve authentication method") ? "ИИ не подключён: в переменных Railway не задан ANTHROPIC_API_KEY (ключ с console.anthropic.com)" : r.error}</p>}
               {(r.analysis || r.strategy) && (
                 <div className="mb-5 grid gap-3 md:grid-cols-2">
                   {r.analysis && <div className="rounded-xl bg-paper p-4"><div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-mute">Анализ</div><p className="text-sm leading-relaxed whitespace-pre-line">{r.analysis}</p></div>}
@@ -171,10 +174,29 @@ export default async function AiPage() {
                     <label className={label}>Масштаб от CTR, %<input name="scaleCtr" type="number" step="0.1" defaultValue={s.scaleCtr} className={input} /></label>
                   </div>
                   <p className="text-xs text-mute">«Судить после» = сколько кампания должна потратить за 7 дней, прежде чем правило её оценит (правило 3 дней).</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className={label}>Потолок цены заявки<input name="maxCpl" type="number" step="0.1" min={0} defaultValue={s.maxCpl} className={input} /></label>
+                    <label className={label}>Потолок в месяц<input name="monthlyAdLimit" type="number" step="1" min={0} defaultValue={s.monthlyAdLimit} className={input} /></label>
+                  </div>
+                  <p className="text-xs text-mute">С потолком цены заявки кампании на заявки судятся по нему, а не по CTR: дороже в 1,5 раза или без заявок — пауза, дешевле — предложение +20%. 0 = не использовать.</p>
+                  <label className={label}>Кампании «Сообщения» ведут в
+                    <select name="messageChannel" defaultValue={s.messageChannel} className={input}>
+                      <option value="instagram">Instagram Direct</option>
+                      <option value="whatsapp">WhatsApp (номер должен быть привязан к странице Facebook)</option>
+                      <option value="messenger">Messenger</option>
+                    </select></label>
+                  <label className={label}>Номер WhatsApp<span className="-mt-1 text-xs font-normal text-mute">для ссылок с кодом идеи, например 994501234567</span><input name="whatsappNumber" defaultValue={s.whatsappNumber} className={input} /></label>
+                  <label className={label}>Час отчёта в Telegram<span className="-mt-1 text-xs font-normal text-mute">0-23 по часовому поясу выше, -1 = не слать</span><input name="reportHour" type="number" min={-1} max={23} defaultValue={s.reportHour} className={input} /></label>
                 </div>
               </details>
               <button className={`${btnMint} w-full !bg-ink !text-white`}>Сохранить</button>
             </form>
+            <div className="mt-4 border-t border-line pt-4 text-sm">
+              <div className="font-semibold">Отчёт и сторож в Telegram</div>
+              {telegramReady()
+                ? <form action={sendReportNow} className="mt-2"><button className={`${btnGhost} w-full`}>Отправить отчёт сейчас</button></form>
+                : <p className="mt-1 text-xs text-mute">Чтобы получать расход, заявки, цену заявки и предупреждения о сбоях, добавьте в переменные Railway TELEGRAM_BOT_TOKEN (от @BotFather) и TELEGRAM_CHAT_ID.</p>}
+            </div>
           </Card>
         </div>
       </div>

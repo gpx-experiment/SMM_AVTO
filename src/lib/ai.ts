@@ -6,11 +6,12 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { db } from "./db";
 import { DEMO } from "./env";
-import { adsAccounts, syncMetrics } from "./services";
+import { adsAccounts, campaignExtras, syncMetrics } from "./services";
 import { connectorFor, ref, tokenFor } from "@/connectors";
 import { playbookPrompt } from "./playbook";
 import { applyRules } from "./optimizer";
 import { NICHES, AVG_CTR, IG_ER, type NicheId } from "./benchmarks";
+import type { Account } from "@prisma/client";
 
 const PlanSchema = z.object({
   analysis: z.string().describe("Что происходит со статистикой: что растёт, что падает, лучшие сети и форматы. 3-6 предложений."),
@@ -35,7 +36,7 @@ const PlanSchema = z.object({
   })),
   promotions: z.array(z.object({
     action: z.enum(["create_campaign", "set_budget", "pause", "resume", "create_retargeting", "create_lookalike"]),
-    objective: z.enum(["engagement", "traffic", "sales"]).describe("Цель для create_campaign"),
+    objective: z.enum(["engagement", "traffic", "sales", "messages"]).describe("Цель для create_campaign; messages = заявки в переписку (WhatsApp, Direct)"),
     adsAccountId: z.string().describe("id рекламного аккаунта из списка"),
     campaignId: z.string().describe("id кампании; пустая строка для create_campaign"),
     name: z.string().describe("название новой кампании; пустая строка для других действий"),
@@ -60,7 +61,8 @@ const SYSTEM = `Ты опытный SMM-менеджер и таргетолог
 3) предлагаешь конкретные посты с готовыми текстами, подобранными хэштегами (Instagram максимум 5, лучше 4-5 точных; TikTok 3-5; YouTube 2-3; Facebook 1-3) и временем публикации (учитывай особенности сетей: TikTok и YouTube принимают только видео, Instagram требует фото или видео);
 4) для новых кампаний подбираешь аудиторию: страны, возраст, пол, интересы;
 5) предлагаешь действия по рекламе: продвинуть удачное, поставить на паузу неэффективное (низкий CTR, высокая цена клика), перераспределить бюджет.
-Не превышай лимит суточного бюджета на кампанию. Не выдумывай цифры, которых нет в данных: если данных мало, так и скажи и предложи осторожные шаги.
+Если бренду нужны заявки, главная метрика рекламы: цена заявки (расход / leads), а не CTR. Кампании на заявки создавай с целью messages и суди по цене заявки; кампанию с дешёвыми кликами, но без заявок, предлагай остановить.
+Не превышай лимит суточного бюджета на кампанию и следи, чтобы сумма бюджетов укладывалась в остаток месячного лимита. Не выдумывай цифры, которых нет в данных: если данных мало, так и скажи и предложи осторожные шаги.
 Пиши по-русски, если бриф не требует другого языка.
 Используй только белые методы: никаких накруток, ботов, массфолловинга, покупки подписчиков и вводящих в заблуждение обещаний.
 
@@ -120,7 +122,11 @@ function demoPlan(ctx: Awaited<ReturnType<typeof gatherContext>>): Plan {
   };
 }
 
-async function askClaude(settings: { niche: string; brief: string; goals: string; postsPerWeek: number; maxDailyAdBudget: number; timezone: string; websiteUrl: string; pixelId: string; retargetingAudienceId: string }, ctx: object): Promise<Plan> {
+export const hasAiKey = () => !!process.env.ANTHROPIC_API_KEY?.trim();
+export const NO_KEY = "ИИ не подключён: в переменных Railway не задан ANTHROPIC_API_KEY (ключ с console.anthropic.com)";
+
+async function askClaude(settings: { niche: string; brief: string; goals: string; postsPerWeek: number; maxDailyAdBudget: number; timezone: string; websiteUrl: string; pixelId: string; retargetingAudienceId: string; maxCpl: number; monthlyAdLimit: number; messageChannel: string }, ctx: object): Promise<Plan> {
+  if (!hasAiKey()) throw new Error(NO_KEY);
   const client = new Anthropic();
   const res = await client.messages.parse({
     model: process.env.AI_MODEL ?? "claude-opus-5-5",
@@ -132,7 +138,7 @@ async function askClaude(settings: { niche: string; brief: string; goals: string
       `Сфера: ${settings.niche in NICHES ? NICHES[settings.niche as NicheId].label : "не выбрана"}. Бенчмарки: медиана CTR рекламы Meta в сфере ${settings.niche in NICHES ? NICHES[settings.niche as NicheId].ctr : AVG_CTR}% (WordStream 2025); вовлечённость Instagram по формату: карусель ${IG_ER.carousel}%, Reels ${IG_ER.reels}%, фото ${IG_ER.image}% (Socialinsider 2025); лучшие окна публикаций вт-ср 11-19 по местному времени (Sprout Social 2026). В поле reason у постов и рекламы указывай ожидаемый эффект в процентах только со ссылкой на эти бенчмарки или на статистику аккаунта, и помечай как оценку.`,
       `Цели: ${settings.goals}`,
       `Постов в неделю: ${settings.postsPerWeek}`,
-      `Лимит суточного бюджета на кампанию: ${settings.maxDailyAdBudget}`,
+      `Лимит суточного бюджета на кампанию: ${settings.maxDailyAdBudget}; потолок расхода в месяц: ${settings.monthlyAdLimit || "не задан"}; потолок цены заявки: ${settings.maxCpl || "не задан"}; кампании «Сообщения» ведут в: ${settings.messageChannel}`,
       `Сейчас: ${new Date().toISOString()}, часовой пояс аудитории: ${settings.timezone}`,
       `Сайт: ${settings.websiteUrl || "нет"}; Meta Pixel: ${settings.pixelId ? "установлен" : "нет (цель «Продажи» недоступна)"}; аудитория ретаргетинга: ${settings.retargetingAudienceId ? "уже создана" : "ещё нет"}`,
       `Данные (JSON):\n${JSON.stringify(ctx)}`,
@@ -154,8 +160,10 @@ export async function runAgent(workspaceId: string) {
     const settings = await getSettings(workspaceId);
     await syncMetrics(workspaceId);
     const ctx = await gatherContext(workspaceId);
-    const useDemo = DEMO && !process.env.ANTHROPIC_API_KEY;
-    const plan = useDemo ? demoPlan(ctx) : await askClaude(settings, ctx);
+    const useDemo = DEMO && !hasAiKey();
+    // Без ключа ИИ автоправила всё равно работают: слабая реклама останавливается, сильная предлагается к масштабированию
+    const rulesOnly: Plan = { analysis: `${NO_KEY}. Сработали только автоправила таргетолога.`, strategy: "", abInsight: "нет данных", posts: [], promotions: [] };
+    const plan = useDemo ? demoPlan(ctx) : hasAiKey() ? await askClaude(settings, ctx) : rulesOnly;
     const validAccounts = new Set(ctx.accounts.map((a) => a.id));
 
     for (const p of plan.posts) {
@@ -204,11 +212,29 @@ export async function runAgent(workspaceId: string) {
     if (settings.autoPublish) {
       for (const p of await db.proposal.findMany({ where: { runId: run.id, kind: "post", status: "pending" } })) await executeProposal(p.id);
     }
-    await db.aiRun.update({ where: { id: run.id }, data: { status: "done", analysis: plan.analysis, strategy: `${plan.strategy}\n\nA/B тесты: ${plan.abInsight}` } });
+    await db.aiRun.update({ where: { id: run.id }, data: { status: "done", analysis: plan.analysis, strategy: plan.strategy ? `${plan.strategy}\n\nA/B тесты: ${plan.abInsight}` : "" } });
   } catch (e) {
     await db.aiRun.update({ where: { id: run.id }, data: { status: "failed", error: (e as Error).message } });
   }
   return run.id;
+}
+
+export type NamedAudience = { label?: string; countries: string[]; ageMin: number; ageMax: number; gender: "all" | "male" | "female"; interests: string[]; useRetargeting?: boolean };
+/** Интересы названы словами: находим их id через поиск рекламного кабинета */
+export async function resolveAudiences(acc: Account, list: NamedAudience[], retargetingAudienceId: string) {
+  const ads = connectorFor(acc.provider).ads!;
+  const token = await tokenFor(acc);
+  const out = [];
+  for (const a of list) {
+    const interests = [];
+    for (const name of a.interests) {
+      const hit = (await ads.searchInterests?.(ref(acc), token, name))?.[0];
+      if (hit) interests.push({ id: hit.id, name: hit.name });
+    }
+    const customAudienceIds = a.useRetargeting && retargetingAudienceId ? [retargetingAudienceId] : [];
+    out.push({ label: a.label, countries: a.countries, ageMin: a.ageMin, ageMax: a.ageMax, gender: a.gender, interests, customAudienceIds });
+  }
+  return out;
 }
 
 /** Текст поста с выбранным хуком (A/B) и вопросом для комментариев */
@@ -260,18 +286,8 @@ export async function executeProposal(id: string, overrides?: { mediaUrl?: strin
         result = `Создана похожая аудитория ${lal}`;
       }
       if (p.kind === "create_campaign") {
-        // Интересы ИИ называет словами: находим их id через поиск рекламного кабинета
-        const audiences = [];
-        for (const a of (data.audiences ?? []) as Plan["promotions"][number]["audiences"]) {
-          const interests = [];
-          for (const name of a.interests) {
-            const hit = (await ads.searchInterests?.(ref(acc), token, name))?.[0];
-            if (hit) interests.push({ id: hit.id, name: hit.name });
-          }
-          const customAudienceIds = a.useRetargeting && settings.retargetingAudienceId ? [settings.retargetingAudienceId] : [];
-          audiences.push({ label: a.label, countries: a.countries, ageMin: a.ageMin, ageMax: a.ageMax, gender: a.gender, interests, customAudienceIds });
-        }
-        const id = await ads.createCampaign(ref(acc), token, { name: data.name, dailyBudget: data.dailyBudget, objective: data.objective, audiences, pixelId: settings.pixelId });
+        const audiences = await resolveAudiences(acc, (data.audiences ?? []) as NamedAudience[], settings.retargetingAudienceId);
+        const id = await ads.createCampaign(ref(acc), token, { name: data.name, dailyBudget: data.dailyBudget, objective: data.objective, audiences, ...(await campaignExtras(p.run.workspaceId, settings)) });
         result = `Создана кампания ${id}${audiences.length > 1 ? ` с тестом ${audiences.length} аудиторий` : ""} (на паузе, добавьте креатив и запустите)`;
       }
       if (p.kind === "set_budget") { await ads.setDailyBudget(ref(acc), token, data.campaignId, data.dailyBudget); result = "Бюджет изменён"; }

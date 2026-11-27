@@ -108,6 +108,46 @@ model AiSettings {
   scaleCtr         Float     @default(2.0) // % CTR, выше которого кампанию предлагается масштабировать
   retargetingAudienceId String @default("") // аудитория вовлечённых (Meta)
   lookalikeAudienceId   String @default("")
+  monthlyAdLimit   Float     @default(100) // свой потолок расхода на рекламу в месяц (0 = без потолка)
+  maxCpl           Float     @default(0)   // потолок цены заявки для автоправил (0 = судить только по CTR)
+  messageChannel   String    @default("instagram") // куда ведут кампании «Сообщения»: whatsapp | instagram | messenger
+  whatsappNumber   String    @default("") // номер WhatsApp для ссылок с кодом идеи и напоминаний о продлении
+  reportHour       Int       @default(9)  // час ежедневного отчёта в Telegram по часовому поясу аудитории (-1 = выключен)
+  lastReportAt     DateTime?
+}
+
+// Идея таргетинга: гипотеза -> тест-кампания на паузе -> вердикт через несколько дней
+model AdIdea {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  title        String
+  product      String    @default("")
+  hypothesis   String    @default("")
+  objective    String    @default("messages")
+  audience     String    // JSON: { countries, ageMin, ageMax, gender, interests: string[], useRetargeting }
+  texts        String    @default("[]") // JSON: [{ lang, text }] варианты объявления
+  dailyBudget  Float     @default(4)
+  code         String    // короткий код для ссылки WhatsApp: по нему видно, какая идея привела клиента
+  status       String    @default("idea") // idea | testing | won | lost
+  adsAccountId String?
+  campaignId   String?
+  startedAt    DateTime?
+  verdict      String    @default("")
+  sales        Int       @default(0) // проданные полисы, отмечаются вручную
+  createdAt    DateTime  @default(now())
+}
+
+// Полис клиента для напоминаний о продлении
+model Renewal {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  phone       String
+  product     String   @default("İcbari")
+  car         String   @default("")
+  expiresAt   DateTime
+  status      String   @default("active") // active | contacted | lost
+  createdAt   DateTime @default(now())
 }
 
 // Один запуск ИИ: анализ + стратегия + предложения
