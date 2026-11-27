@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { encrypt } from "./crypto";
 import { connectorFor, isAdsAccount, ref, tokenFor } from "@/connectors";
-import type { ConnectedAccount } from "@/connectors/types";
+import type { ConnectedAccount, MessageChannel } from "@/connectors/types";
 import { addUtm } from "./playbook";
 
 export async function saveAccounts(workspaceId: string, list: ConnectedAccount[]) {
@@ -88,6 +88,12 @@ export async function publishDue() {
   const due = await db.post.findMany({ where: { status: "scheduled", scheduledAt: { lte: new Date() } } });
   for (const p of due) await publishPost(p.id);
   return due.length;
+}
+
+/** Данные для создания кампании: пиксель, страница и канал переписки для цели «Сообщения» */
+export async function campaignExtras(workspaceId: string, s: { pixelId: string; messageChannel: string }) {
+  const page = await db.account.findFirst({ where: { workspaceId, hidden: false, provider: "facebook", NOT: { externalId: { startsWith: "ads:" } } } });
+  return { pixelId: s.pixelId, pageId: page?.externalId, messageChannel: s.messageChannel as MessageChannel };
 }
 
 export async function adsAccounts(workspaceId: string) {

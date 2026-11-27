@@ -66,6 +66,10 @@ export const NICHES = {
   education: { label: "Образование и курсы", ctr: 1.45, cpc: 0.86, postsPerWeek: 4, interests: ["Технологии"], age: [18, 40], gender: "all" },
   fitness: { label: "Фитнес и здоровье", ctr: 1.63, cpc: 0.80, postsPerWeek: 5, interests: ["Фитнес и здоровье"], age: [18, 45], gender: "all" },
   travel: { label: "Путешествия", ctr: 2.76, cpc: 0.51, postsPerWeek: 5, interests: ["Путешествия"], age: [22, 50], gender: "all" },
+  // WordStream 2025, «Finance & Insurance», цель «трафик»: CTR 0,98%, клик $1,22. По лид-кампаниям для этой отрасли данных в источнике нет.
+  insurance: { label: "Страхование (авто)", ctr: 0.98, cpc: 1.22, postsPerWeek: 4, interests: ["Автострахование", "Автомобили"], age: [23, 60], gender: "all",
+    goals: "Заявки в WhatsApp и Direct на İcbari, KASKO и Yaşıl Kart; продления полисов",
+    brief: "Автострахование в Азербайджане: İcbari (обязательное), KASKO, Yaşıl Kart. Оформление онлайн, ответ в WhatsApp и Direct. Аудитория: владельцы авто. Языки: азербайджанский и русский. Тон: простой, быстрый, без страшилок." },
   services: { label: "Услуги для бизнеса", ctr: 1.38, cpc: 0.75, postsPerWeek: 3, interests: ["Малый бизнес"], age: [25, 55], gender: "all" },
 } as const;
 export type NicheId = keyof typeof NICHES;
@@ -78,7 +82,11 @@ export function ctrVsIndustry(ctr: number, niche?: string): Hint {
   return { text: `CTR ${ctr.toFixed(2)}%: ${diff >= 0 ? "выше" : "ниже"} медианы ${n ? `отрасли «${n.label}»` : "всех отраслей"} (${bench}%) на ${Math.abs(diff)}%`, pct: diff, tone: diff >= 0 ? "up" : "down", src: SRC.wordstream };
 }
 
+// Лид-кампании Meta, все отрасли (WordStream 2025, рынок США): цена заявки $27,66, конверсия клика в заявку 7,72%
+export const LEADS_AVG = { cpl: 27.66, cvr: 7.72 };
+
 export function objectiveHint(objective: string): Hint {
+  if (objective === "messages") return { text: `Цель «Сообщения» ведёт человека сразу в переписку: для услуг это самый короткий путь до заявки. Ориентир по рынку США: медианная цена заявки $${String(LEADS_AVG.cpl).replace(".", ",")} по всем отраслям, в Азербайджане аукцион дешевле`, tone: "info", src: SRC.wordstream };
   if (objective === "traffic") return { text: "Цель «Трафик»: медиана CTR 1,71%, клик около $0,70. Подходит, чтобы вести людей на сайт", tone: "info", src: SRC.wordstream };
   if (objective === "sales") return { text: "Цель «Продажи» оптимизирует под покупки по пикселю: лучше всего работает на тёплой аудитории", tone: "info", src: SRC.wordstream };
   return { text: "Цель «Вовлечение» дешевле набирает реакции и тёплую аудиторию для ретаргетинга", tone: "info", src: SRC.wordstream };
@@ -95,6 +103,7 @@ export function nichePreset(id: NicheId) {
     minCtr: Math.round(n.ctr * 0.5 * 10) / 10,   // ниже половины медианы отрасли: кандидат на паузу
     scaleCtr: Math.round(n.ctr * 1.3 * 10) / 10, // на 30% выше медианы: кандидат на масштабирование
     interests: [...n.interests], age: n.age, gender: n.gender,
-    goals: "Рост охвата и вовлечённости, заявки из соцсетей",
+    goals: "goals" in n ? n.goals : "Рост охвата и вовлечённости, заявки из соцсетей",
+    brief: "brief" in n ? n.brief : `Сфера: ${n.label}`,
   };
 }

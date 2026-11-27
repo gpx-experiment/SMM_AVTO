@@ -5,6 +5,12 @@
 import { callbackUrl, env } from "@/lib/env";
 import { http, byDay, type Connector, type ConnectedAccount, type DailyMetrics, type Campaign } from "./types";
 
+// Действия, которые считаем заявкой: начатая переписка и лид (форма или пиксель)
+const LEAD_ACTIONS = ["onsite_conversion.messaging_conversation_started_7d", "lead"];
+const LEAD_GOALS = ["CONVERSATIONS", "LEAD_GENERATION", "QUALITY_LEAD", "OFFSITE_CONVERSIONS"];
+const IN_REVIEW = ["PENDING_REVIEW", "IN_PROCESS", "PREAPPROVED", "PENDING_BILLING_INFO"];
+type AdSetRow = { id: string; status: string; daily_budget?: string; optimization_goal?: string };
+
 const V = (env("META_API_VERSION") || "v23.0");
 const G = `https://graph.facebook.com/${V}`;
 const SCOPES = [
@@ -141,23 +147,54 @@ export const meta: Connector = {
 
   ads: {
     async listCampaigns(acc, token): Promise<Campaign[]> {
-      type Row = { id: string; name: string; status: string; daily_budget?: string; insights?: { data: { spend?: string; impressions?: string; clicks?: string }[] } };
+      type Row = { id: string; name: string; status: string; effective_status?: string; objective?: string; daily_budget?: string;
+        adsets?: { data: AdSetRow[] }; ads?: { data: { effective_status: string }[] };
+        insights?: { data: { spend?: string; impressions?: string; clicks?: string; actions?: { action_type: string; value: string }[] }[] } };
       const r = await http<{ data: Row[] }>(`${G}/${acc.adAccountId}/campaigns?${q_({
-        fields: "id,name,status,daily_budget,insights.date_preset(last_7d){spend,impressions,clicks}", limit: 100, access_token: token,
+        fields: "id,name,status,effective_status,objective,daily_budget,adsets.limit(50){id,status,daily_budget,optimization_goal},ads.limit(50){effective_status},insights.date_preset(last_7d){spend,impressions,clicks,actions}",
+        limit: 100, access_token: token,
       })}`);
-      return r.data.map((c) => ({
-        id: c.id, name: c.name, status: c.status,
-        dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : undefined,
-        spend: Number(c.insights?.data[0]?.spend ?? 0),
-        impressions: Number(c.insights?.data[0]?.impressions ?? 0),
-        clicks: Number(c.insights?.data[0]?.clicks ?? 0),
-      }));
+      return r.data.map((c) => {
+        const ins = c.insights?.data[0];
+        const sets = c.adsets?.data ?? [], ads = c.ads?.data ?? [];
+        // Бюджет бывает на кампании или на группах объявлений: во втором случае складываем активные группы
+        const setBudget = sets.filter((s) => s.status === "ACTIVE" && s.daily_budget).reduce((x, s) => x + Number(s.daily_budget), 0);
+        const budget = c.daily_budget ? Number(c.daily_budget) : setBudget;
+        const leads = (ins?.actions ?? []).filter((a) => LEAD_ACTIONS.includes(a.action_type)).reduce((x, a) => x + Number(a.value), 0);
+        let delivery = c.effective_status ?? c.status;
+        if (delivery === "ACTIVE") {
+          if (!ads.length) delivery = "NO_ADS";
+          else if (ads.some((a) => a.effective_status === "DISAPPROVED")) delivery = "DISAPPROVED";
+          else if (ads.some((a) => a.effective_status === "WITH_ISSUES")) delivery = "WITH_ISSUES";
+          else if (ads.every((a) => IN_REVIEW.includes(a.effective_status))) delivery = "IN_REVIEW";
+        }
+        return {
+          id: c.id, name: c.name, status: c.status, delivery, leads,
+          leadGoal: ["OUTCOME_LEADS", "OUTCOME_SALES"].includes(c.objective ?? "") || sets.some((s) => LEAD_GOALS.includes(s.optimization_goal ?? "")),
+          dailyBudget: budget ? budget / 100 : undefined, budgetLevel: c.daily_budget ? "campaign" as const : "adset" as const,
+          spend: Number(ins?.spend ?? 0), impressions: Number(ins?.impressions ?? 0), clicks: Number(ins?.clicks ?? 0),
+        };
+      });
+    },
+    async summary(acc, token) {
+      const a = await http<{ currency?: string; spend_cap?: string; amount_spent?: string }>(`${G}/${acc.adAccountId}?${q_({ fields: "currency,spend_cap,amount_spent", access_token: token })}`);
+      const m = await http<{ data: { spend?: string }[] }>(`${G}/${acc.adAccountId}/insights?${q_({ fields: "spend", date_preset: "this_month", access_token: token })}`);
+      const cap = Number(a.spend_cap ?? 0);
+      return { monthSpend: Number(m.data[0]?.spend ?? 0), currency: a.currency, capLeft: cap > 0 ? (cap - Number(a.amount_spent ?? 0)) / 100 : undefined };
     },
     async setStatus(_acc, token, id, active) {
       await http(`${G}/${id}`, { method: "POST", body: new URLSearchParams({ status: active ? "ACTIVE" : "PAUSED", access_token: token }) });
     },
     async setDailyBudget(_acc, token, id, budget) {
-      await http(`${G}/${id}`, { method: "POST", body: new URLSearchParams({ daily_budget: String(Math.round(budget * 100)), access_token: token }) });
+      const c = await http<{ daily_budget?: string; adsets?: { data: AdSetRow[] } }>(`${G}/${id}?${q_({ fields: "daily_budget,adsets.limit(50){id,status,daily_budget}", access_token: token })}`);
+      const post = (target: string, value: number) => http(`${G}/${target}`, { method: "POST", body: new URLSearchParams({ daily_budget: String(Math.round(value * 100)), access_token: token }) });
+      if (c.daily_budget) { await post(id, budget); return; }
+      // Бюджет на группах объявлений: делим новую сумму между активными группами в прежней пропорции
+      const all = (c.adsets?.data ?? []).filter((s) => s.daily_budget);
+      const sets = all.some((s) => s.status === "ACTIVE") ? all.filter((s) => s.status === "ACTIVE") : all;
+      if (!sets.length) throw new Error("У кампании нет дневного бюджета: он задан как бюджет на весь срок, измените его в Ads Manager");
+      const total = sets.reduce((x, s) => x + Number(s.daily_budget), 0);
+      for (const s of sets) await post(s.id, budget * Number(s.daily_budget) / total);
     },
     async searchInterests(_acc, token, q) {
       const r = await http<{ data: { id: string; name: string; audience_size_lower_bound?: number; path?: string[] }[] }>(
@@ -168,9 +205,11 @@ export const meta: Connector = {
       // Кампания с бюджетом на уровне кампании (Advantage+ budget). Группы объявлений создаются на каждую аудиторию:
       // одна аудитория = обычная кампания, несколько = тест аудиторий. Всё создаётся на паузе, креатив добавляется следующим шагом.
       const objective = input.objective ?? "engagement";
-      const OBJ = { engagement: "OUTCOME_ENGAGEMENT", traffic: "OUTCOME_TRAFFIC", sales: "OUTCOME_SALES" } as const;
-      const GOAL = { engagement: "POST_ENGAGEMENT", traffic: "LINK_CLICKS", sales: "OFFSITE_CONVERSIONS" } as const;
+      const OBJ = { engagement: "OUTCOME_ENGAGEMENT", traffic: "OUTCOME_TRAFFIC", sales: "OUTCOME_SALES", messages: "OUTCOME_ENGAGEMENT" } as const;
+      const GOAL = { engagement: "POST_ENGAGEMENT", traffic: "LINK_CLICKS", sales: "OFFSITE_CONVERSIONS", messages: "CONVERSATIONS" } as const;
+      const DEST = { whatsapp: "WHATSAPP", instagram: "INSTAGRAM_DIRECT", messenger: "MESSENGER" } as const;
       if (objective === "sales" && !input.pixelId) throw new Error("Для цели «Продажи» укажите Meta Pixel в настройках ИИ-менеджера");
+      if (objective === "messages" && !input.pageId) throw new Error("Для цели «Сообщения» нужна Facebook-страница: включите её в «Аккаунтах»");
       const r = await http<{ id: string }>(`${G}/${acc.adAccountId}/campaigns`, { method: "POST", body: new URLSearchParams({
         name: input.name, objective: OBJ[objective], status: "PAUSED", special_ad_categories: "[]",
         daily_budget: String(Math.round(input.dailyBudget * 100)), bid_strategy: "LOWEST_COST_WITHOUT_CAP", access_token: token,
@@ -187,6 +226,8 @@ export const meta: Connector = {
           billing_event: "IMPRESSIONS", optimization_goal: GOAL[objective], targeting: JSON.stringify(t), access_token: token,
         };
         if (objective === "sales") body.promoted_object = JSON.stringify({ pixel_id: input.pixelId, custom_event_type: "PURCHASE" });
+        // Переписки: заявка = начатый диалог в WhatsApp, Direct или Messenger (для WhatsApp номер должен быть привязан к странице)
+        if (objective === "messages") Object.assign(body, { destination_type: DEST[input.messageChannel ?? "instagram"], promoted_object: JSON.stringify({ page_id: input.pageId }) });
         await http(`${G}/${acc.adAccountId}/adsets`, { method: "POST", body: new URLSearchParams(body) });
       }
       return r.id;

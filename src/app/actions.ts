@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { db, currentWorkspace } from "@/lib/db";
-import { adsAccounts, publishPost, syncMetrics } from "@/lib/services";
+import { adsAccounts, campaignExtras, publishPost, syncMetrics } from "@/lib/services";
 import { executeProposal, runAgent } from "@/lib/ai";
 import { connectorFor, ref, tokenFor } from "@/connectors";
 import { suggestHashtags } from "@/lib/hashtags";
@@ -10,6 +10,14 @@ import { getSettings } from "@/lib/ai";
 import type { Objective, Targeting } from "@/connectors/types";
 import { sendReply, syncComments } from "@/lib/comments";
 import { NICHES, nichePreset, type NicheId } from "@/lib/benchmarks";
+import { addIdeas, generateIdeas, judgeIdeas, launchIdea, seedIdeas } from "@/lib/ideas";
+import { sendDailyReport } from "@/lib/health";
+import { parseRenewals } from "@/lib/renewals";
+
+/** Короткое сообщение о результате действия: показывается на странице полминуты */
+async function flash(text: string) {
+  (await cookies()).set("flash", text.slice(0, 300), { maxAge: 30, httpOnly: true, sameSite: "lax" });
+}
 
 export async function suggestHashtagsAction(caption: string, accountIds: string[]) {
   const ws = await currentWorkspace();
@@ -112,7 +120,7 @@ export async function createCampaign(accountId: string, fd: FormData) {
   const lal = fd.get("useLookalike") === "on" && s.lookalikeAudienceId ? [s.lookalikeAudienceId] : [];
   await ads.createCampaign(ref(acc), token, {
     name: String(fd.get("name")), dailyBudget: Number(fd.get("budget")),
-    objective: (String(fd.get("objective") || "engagement")) as Objective, pixelId: s.pixelId,
+    objective: (String(fd.get("objective") || "engagement")) as Objective, ...(await campaignExtras(acc.workspaceId, s)),
     audiences: targeting ? [{ ...targeting, customAudienceIds: [...retarget, ...lal] }] : [],
   });
   revalidatePath("/ads");
@@ -127,6 +135,9 @@ export async function saveAiSettings(fd: FormData) {
     ...(fd.has("websiteUrl") ? {
       websiteUrl: String(fd.get("websiteUrl") ?? ""), pixelId: String(fd.get("pixelId") ?? ""), timezone: String(fd.get("timezone") || "Asia/Baku"),
       autoRules: fd.get("autoRules") === "on", minCtr: Number(fd.get("minCtr")), minSpendToJudge: Number(fd.get("minSpendToJudge")), scaleCtr: Number(fd.get("scaleCtr")),
+      monthlyAdLimit: Math.max(0, Number(fd.get("monthlyAdLimit")) || 0), maxCpl: Math.max(0, Number(fd.get("maxCpl")) || 0),
+      messageChannel: ["whatsapp", "instagram", "messenger"].includes(String(fd.get("messageChannel"))) ? String(fd.get("messageChannel")) : "instagram",
+      whatsappNumber: String(fd.get("whatsappNumber") ?? "").replace(/[^\d+]/g, ""), reportHour: Math.min(23, Math.max(-1, Math.round(Number(fd.get("reportHour"))))),
     } : {}),
     autoPublish: fd.get("autoPublish") === "on", autoPauseAds: fd.get("autoPauseAds") === "on",
   };
@@ -176,7 +187,118 @@ export async function applyNichePreset(fd: FormData) {
   await db.aiSettings.update({ where: { workspaceId: ws.id }, data: {
     niche, postsPerWeek: p.postsPerWeek, minCtr: p.minCtr, scaleCtr: p.scaleCtr, autoRules: true,
     goals: s.goals === "Рост охвата и вовлечённости" ? p.goals : s.goals,
-    brief: s.brief || `Сфера: ${NICHES[niche].label}`,
+    brief: s.brief || p.brief,
   } });
+  await seedIdeas(ws.id); // готовые гипотезы сферы сразу попадают на доску идей
   revalidatePath("/", "layout");
+}
+
+// ---- Идеи таргетинга
+
+export async function seedIdeasAction() {
+  const ws = await currentWorkspace();
+  const n = await seedIdeas(ws.id);
+  await flash(n ? `Добавлено готовых идей: ${n}` : "Для выбранной сферы готовых идей нет или они уже на доске");
+  revalidatePath("/ideas");
+}
+
+export async function generateIdeasAction() {
+  const ws = await currentWorkspace();
+  try { await flash(`ИИ добавил идей: ${await generateIdeas(ws.id)}`); } catch (e) { await flash((e as Error).message); }
+  revalidatePath("/ideas");
+}
+
+export async function createIdeaAction(fd: FormData) {
+  const ws = await currentWorkspace();
+  const texts = String(fd.get("texts") ?? "").split(/\r?\n/).map((t) => t.trim()).filter(Boolean).map((text) => ({ lang: "", text }));
+  await addIdeas(ws.id, [{
+    title: String(fd.get("title")).trim(), product: String(fd.get("product") ?? "").trim(), hypothesis: String(fd.get("hypothesis") ?? "").trim(), objective: "messages",
+    audience: { countries: ["AZ"], ageMin: Number(fd.get("ageMin")) || 18, ageMax: Number(fd.get("ageMax")) || 65, gender: (String(fd.get("gender")) || "all") as "all" | "male" | "female",
+      interests: String(fd.get("interests") ?? "").split(",").map((x) => x.trim()).filter(Boolean), useRetargeting: fd.get("useRetargeting") === "on" },
+    texts,
+  }], Number(fd.get("dailyBudget")) || 4);
+  revalidatePath("/ideas");
+}
+
+async function ownIdea(id: string) {
+  const ws = await currentWorkspace();
+  return db.adIdea.findFirstOrThrow({ where: { id, workspaceId: ws.id } });
+}
+
+export async function launchIdeaAction(id: string) {
+  await ownIdea(id);
+  await launchIdea(id);
+  revalidatePath("/ideas"); revalidatePath("/ads");
+}
+
+export async function setIdeaStatus(id: string, status: "idea" | "won" | "lost") {
+  await ownIdea(id);
+  await db.adIdea.update({ where: { id }, data: { status } });
+  revalidatePath("/ideas");
+}
+
+export async function addIdeaSale(id: string, delta: number) {
+  const idea = await ownIdea(id);
+  await db.adIdea.update({ where: { id }, data: { sales: Math.max(0, idea.sales + delta) } });
+  revalidatePath("/ideas");
+}
+
+export async function deleteIdea(id: string) {
+  const idea = await ownIdea(id);
+  if (idea.campaignId) { await flash("У идеи есть кампания: сначала удалите её в Ads Manager или отметьте идею как несработавшую"); }
+  else await db.adIdea.delete({ where: { id } });
+  revalidatePath("/ideas");
+}
+
+export async function judgeIdeasAction() {
+  const ws = await currentWorkspace();
+  await flash(`Вынесено вердиктов: ${await judgeIdeas(ws.id)}`);
+  revalidatePath("/ideas");
+}
+
+// ---- Отчёт в Telegram
+
+export async function sendReportNow() {
+  const ws = await currentWorkspace();
+  try { await sendDailyReport(ws.id); await flash("Отчёт отправлен в Telegram"); } catch (e) { await flash((e as Error).message); }
+  revalidatePath("/ai");
+}
+
+// ---- Продления полисов
+
+export async function importRenewals(fd: FormData) {
+  const ws = await currentWorkspace();
+  const { rows, bad } = parseRenewals(String(fd.get("rows") ?? ""));
+  let added = 0;
+  for (const r of rows) {
+    const dup = await db.renewal.findFirst({ where: { workspaceId: ws.id, phone: r.phone, product: r.product, expiresAt: r.expiresAt } });
+    if (!dup) { await db.renewal.create({ data: { workspaceId: ws.id, ...r } }); added++; }
+  }
+  await flash(`Добавлено полисов: ${added}${rows.length - added ? `, уже были: ${rows.length - added}` : ""}${bad.length ? `. Не разобрано строк: ${bad.length} (нужно «Имя; телефон; дата»)` : ""}`);
+  revalidatePath("/renewals");
+}
+
+async function ownRenewal(id: string) {
+  const ws = await currentWorkspace();
+  return db.renewal.findFirstOrThrow({ where: { id, workspaceId: ws.id } });
+}
+
+export async function setRenewalStatus(id: string, status: "active" | "contacted" | "lost") {
+  await ownRenewal(id);
+  await db.renewal.update({ where: { id }, data: { status } });
+  revalidatePath("/renewals");
+}
+
+/** Клиент продлил: переносим срок на год вперёд, через год напоминание придёт снова */
+export async function markRenewed(id: string) {
+  const r = await ownRenewal(id);
+  const next = new Date(r.expiresAt); next.setUTCFullYear(next.getUTCFullYear() + 1);
+  await db.renewal.update({ where: { id }, data: { expiresAt: next, status: "active" } });
+  revalidatePath("/renewals");
+}
+
+export async function deleteRenewal(id: string) {
+  await ownRenewal(id);
+  await db.renewal.delete({ where: { id } });
+  revalidatePath("/renewals");
 }

@@ -16,9 +16,9 @@ const campaigns = new Map<string, Campaign[]>();
 function list(adAccountId: string) {
   if (!campaigns.has(adAccountId)) {
     campaigns.set(adAccountId, [
-      { id: `${adAccountId}-1`, name: "Продвижение Reels: новинка", status: "ACTIVE", dailyBudget: 20, spend: 96.4, impressions: 41200, clicks: 1310 },
-      { id: `${adAccountId}-2`, name: "Охват: бренд", status: "PAUSED", dailyBudget: 10, spend: 35.1, impressions: 18800, clicks: 402 },
-      { id: `${adAccountId}-3`, name: "Баннер: холодная аудитория", status: "ACTIVE", dailyBudget: 8, spend: 41.7, impressions: 23400, clicks: 117 },
+      { id: `${adAccountId}-1`, name: "Продвижение Reels: новинка", status: "ACTIVE", dailyBudget: 20, spend: 96.4, impressions: 41200, clicks: 1310, leads: 38, leadGoal: true, delivery: "ACTIVE" },
+      { id: `${adAccountId}-2`, name: "Охват: бренд", status: "PAUSED", dailyBudget: 10, spend: 35.1, impressions: 18800, clicks: 402, leads: 0, delivery: "PAUSED" },
+      { id: `${adAccountId}-3`, name: "Баннер: холодная аудитория", status: "ACTIVE", dailyBudget: 8, spend: 41.7, impressions: 23400, clicks: 117, leads: 1, leadGoal: true, delivery: "ACTIVE" },
     ]);
   }
   return campaigns.get(adAccountId)!;
@@ -28,7 +28,7 @@ const INTERESTS = [
   ["6003139266461", "Фитнес и здоровье", 820_000_000], ["6003107902433", "Мода", 1_100_000_000], ["6003384248805", "Красота и косметика", 950_000_000],
   ["6003020834693", "Путешествия", 1_200_000_000], ["6003659420716", "Рестораны и кафе", 610_000_000], ["6003348604581", "Технологии", 900_000_000],
   ["6003277229526", "Малый бизнес", 380_000_000], ["6003456388203", "Автомобили", 700_000_000], ["6003397425735", "Недвижимость", 290_000_000],
-  ["6003012317397", "Онлайн-шопинг", 1_000_000_000], ["6002991239659", "Материнство", 260_000_000], ["6003252179711", "Кулинария", 640_000_000],
+  ["6003012317397", "Онлайн-шопинг", 1_000_000_000], ["6003304473660", "Автострахование", 120_000_000], ["6003176678152", "Такси", 210_000_000], ["6002991239659", "Материнство", 260_000_000], ["6003252179711", "Кулинария", 640_000_000],
 ] as const;
 
 const DEMO_COMMENTS = [
@@ -61,6 +61,7 @@ export function demoConnector(auth: AuthProvider): Connector {
       searchInterests: async (_a, _t, q) => INTERESTS.filter(([, n]) => n.toLowerCase().includes(q.toLowerCase()))
         .map(([id, name, audienceSize]) => ({ id, name, audienceSize })),
       listCampaigns: async (acc) => list(acc.adAccountId!),
+      summary: async (acc) => ({ monthSpend: list(acc.adAccountId!).reduce((s, c) => s + (c.spend ?? 0), 0) * 2.1, currency: "USD" }),
       setStatus: async (acc, _t, id, active) => { const c = list(acc.adAccountId!).find((x) => x.id === id); if (c) c.status = active ? "ACTIVE" : "PAUSED"; },
       setDailyBudget: async (acc, _t, id, b) => { const c = list(acc.adAccountId!).find((x) => x.id === id); if (c) c.dailyBudget = b; },
       createEngagementAudience: async () => `aud-${Date.now()}`,
@@ -68,7 +69,7 @@ export function demoConnector(auth: AuthProvider): Connector {
       createCampaign: async (acc, _t, { name, dailyBudget, audiences, objective }) => {
         const id = `${acc.adAccountId}-${Date.now()}`;
         const suffix = audiences && audiences.length > 1 ? ` (тест ${audiences.length} аудиторий)` : "";
-        list(acc.adAccountId!).push({ id, name: name + suffix, status: "PAUSED", dailyBudget, spend: 0, impressions: 0, clicks: 0, targeting: audiences?.[0], objective });
+        list(acc.adAccountId!).push({ id, name: name + suffix, status: "PAUSED", dailyBudget, spend: 0, impressions: 0, clicks: 0, leads: 0, leadGoal: objective === "messages" || objective === "sales", delivery: "PAUSED", targeting: audiences?.[0], objective });
         return id;
       },
     },
