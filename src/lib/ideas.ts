@@ -135,9 +135,35 @@ export async function launchIdea(id: string, adsAccountId?: string) {
     const campaignId = await connectorFor(acc.provider).ads!.createCampaign(ref(acc), await tokenFor(acc), {
       name: `Тест ${idea.code}: ${idea.title}`, dailyBudget: idea.dailyBudget, objective: idea.objective as Objective, audiences, ...(await campaignExtras(idea.workspaceId, s)) });
     await db.adIdea.update({ where: { id }, data: { status: "testing", campaignId, adsAccountId: acc.id, startedAt: new Date(),
-      verdict: "Кампания создана на паузе: добавьте объявление в Ads Manager и нажмите «Запустить» в разделе «Реклама»" } });
+      verdict: "Кампания создана на паузе, объявлений в ней пока нет: укажите картинку и нажмите «Добавить объявления»" } });
   } catch (e) {
     await db.adIdea.update({ where: { id }, data: { verdict: `Не удалось создать тест: ${(e as Error).message}` } });
+    return;
+  }
+  if (idea.imageUrl) await addIdeaAds(id);
+}
+
+/** Собирает объявления теста из текстов идеи и картинки: по объявлению на каждый текст. Кампания остаётся на паузе. */
+export async function addIdeaAds(id: string) {
+  const idea = await db.adIdea.findUniqueOrThrow({ where: { id } });
+  try {
+    if (!idea.campaignId || !idea.adsAccountId) throw new Error("Сначала создайте тест");
+    if (!idea.imageUrl) throw new Error("Укажите ссылку на картинку");
+    const texts = (JSON.parse(idea.texts) as IdeaText[]).map((t) => t.text).filter(Boolean);
+    if (!texts.length) throw new Error("У идеи нет текстов объявления");
+    const s = await getSettings(idea.workspaceId);
+    const acc = await db.account.findUniqueOrThrow({ where: { id: idea.adsAccountId } });
+    const ads = connectorFor(acc.provider).ads!;
+    if (!ads.createAds) throw new Error("Готовые объявления пока создаются только для Meta");
+    const x = await campaignExtras(idea.workspaceId, s);
+    if (!x.pageId) throw new Error("Нужна Facebook-страница: включите её в «Аккаунтах»");
+    const product = idea.product || "Sığorta";
+    const made = await ads.createAds(ref(acc), await tokenFor(acc), { campaignId: idea.campaignId, pageId: x.pageId, igId: x.igId, messageChannel: x.messageChannel, imageUrl: idea.imageUrl, texts,
+      // Код идеи в готовых вопросах: по нему заявка сама привязывается к идее
+      greeting: "Salam! Sizə necə kömək edə bilərik?", iceBreakers: [`${product} qiymətini bilmək istəyirəm · ${idea.code}`, `Sənədlər nə lazımdır? · ${idea.code}`, `Хочу узнать цену · ${idea.code}`] });
+    await db.adIdea.update({ where: { id }, data: { verdict: `Готово: объявлений создано ${made}, кампания на паузе. Нажмите «Запустить» в разделе «Реклама», и после модерации Meta начнутся показы` } });
+  } catch (e) {
+    await db.adIdea.update({ where: { id }, data: { verdict: `Объявления не созданы: ${(e as Error).message}` } });
   }
 }
 

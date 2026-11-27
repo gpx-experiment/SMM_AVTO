@@ -63,6 +63,8 @@ export async function healthAlerts(workspaceId: string, ads?: AdsOverview): Prom
       else if (ads.dailyTotal > 0 && left / ads.dailyTotal < daysLeftInMonth()) out.push({ level: "amber", text: `При бюджетах ${ads.dailyTotal.toFixed(2)}/день месячного лимита хватит на ${Math.floor(left / ads.dailyTotal)} дн., до конца месяца ${daysLeftInMonth()}`, href: "/ads" });
     }
   }
+  const waiting = await db.lead.count({ where: { workspaceId, status: "new", waiting: true, lastAt: { lte: new Date(Date.now() - 15 * 60000) } } });
+  if (waiting) out.push({ level: "red", text: `Заявки ждут ответа дольше 15 минут: ${waiting}`, href: "/leads" });
   const due = await dueRenewals(workspaceId, 7);
   if (due.length) out.push({ level: "amber", text: `Полисы заканчиваются в ближайшие 7 дней: ${due.length}. Напишите клиентам`, href: "/renewals" });
   return out;
@@ -97,12 +99,19 @@ export async function sendDailyReport(workspaceId: string) {
     `Показы: ${ads.impressions} · клики: ${ads.clicks} · CTR: ${ads.impressions ? n((ads.clicks / ads.impressions) * 100) : "0"}%`,
     ads.monthSpend != null ? `Месяц: ${n(ads.monthSpend)}${s.monthlyAdLimit ? ` из ${s.monthlyAdLimit}` : ""} · бюджеты: ${n(ads.dailyTotal)}/день` : "",
     ...ads.campaigns.filter((c) => c.status === "ACTIVE").map((c) => `• ${c.name}: ${n(c.spend ?? 0)}, заявок ${c.leads ?? 0}${c.leads ? ` по ${n((c.spend ?? 0) / c.leads)}` : ""}`),
+    await leadsLine(workspaceId),
     pending ? `\n🟡 Ждут вашего решения: ${pending}` : "",
     judged.length ? `\n🧪 Идеи:\n${judged.map((i) => `• ${i.title}. ${i.verdict}`).join("\n")}` : "",
     alerts.length ? `\n⚠️ Требует внимания:\n${alerts.map((a) => `• ${a.text}`).join("\n")}` : "\n✅ Сбоев нет",
   ].filter(Boolean);
-  await sendTelegram(lines.join("\n"), [["Открыть рекламу", "/ads"], ...(pending ? [["Решения ИИ", "/ai"] as [string, string]] : []), ["Идеи", "/ideas"]]);
+  await sendTelegram(lines.join("\n"), [["Открыть рекламу", "/ads"], ["Заявки", "/leads"], ...(pending ? [["Решения ИИ", "/ai"] as [string, string]] : []), ["Идеи", "/ideas"]]);
   await db.aiSettings.update({ where: { workspaceId }, data: { lastReportAt: new Date() } });
+}
+
+async function leadsLine(workspaceId: string) {
+  const week = { workspaceId, createdAt: { gte: new Date(Date.now() - 7 * 86400000) } };
+  const [all, sold] = [await db.lead.count({ where: week }), await db.lead.findMany({ where: { ...week, status: "sold" } })];
+  return all ? `\n📥 Заявок в программе за 7 дней: ${all} · продано: ${sold.length}${sold.length ? ` · заработано: ${sold.reduce((x, l) => x + l.amount, 0).toFixed(2)}` : ""}` : "";
 }
 
 /** Пора ли слать отчёт: наступил заданный час по часовому поясу и сегодня ещё не слали */

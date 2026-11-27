@@ -89,6 +89,8 @@ export interface Connector {
   ads?: AdsConnector;
   fetchComments?(acc: AccountRef, token: string): Promise<Comment[]>;
   replyComment?(acc: AccountRef, token: string, commentId: string, text: string): Promise<void>;
+  /** Последние переписки страницы (Messenger) или привязанного Instagram. acc — Facebook-страница, token — её токен */
+  fetchConversations?(acc: AccountRef, token: string, platform: "instagram" | "messenger", own: string[]): Promise<Conversation[]>;
 }
 
 /** Аудитория рекламы */
@@ -117,6 +119,22 @@ export interface CampaignInput {
   messageChannel?: MessageChannel;
 }
 
+/** Объявления для кампании «Сообщения»: картинка, тексты и подсказки первого сообщения */
+export interface AdsInput {
+  campaignId: string;
+  pageId: string;
+  igId?: string;
+  messageChannel: MessageChannel;
+  imageUrl: string;
+  texts: string[];
+  /** Приветствие и готовые вопросы в переписке: по ним видно, с какого объявления пришёл человек */
+  greeting?: string;
+  iceBreakers?: string[];
+}
+
+/** Переписка из Direct или Messenger */
+export interface Conversation { id: string; platform: "instagram" | "messenger"; name: string; updatedAt: Date; firstText: string; lastText: string; lastFromCustomer: boolean; customerMessages: { text: string; at: Date }[] }
+
 export interface Comment { id: string; author: string; text: string; createdAt: Date; postCaption: string }
 
 export interface Interest { id: string; name: string; audienceSize?: number; path?: string }
@@ -132,6 +150,8 @@ export interface AdsConnector {
   createEngagementAudience?(acc: AccountRef, token: string, sources: { igId?: string; pageId?: string }, days: number): Promise<string>;
   /** Похожая аудитория */
   createLookalike?(acc: AccountRef, token: string, originAudienceId: string, country: string, ratio: number): Promise<string>;
+  /** Готовые объявления в группах кампании: по одному на каждый текст. Возвращает число созданных объявлений */
+  createAds?(acc: AccountRef, token: string, input: AdsInput): Promise<number>;
   /** Расход кабинета за текущий месяц и остаток лимита затрат */
   summary?(acc: AccountRef, token: string): Promise<AdsSummary>;
 }

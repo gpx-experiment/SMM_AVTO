@@ -5,6 +5,7 @@ import { publishDue, syncMetrics } from "@/lib/services";
 import { getSettings, runAgent } from "@/lib/ai";
 import { syncComments } from "@/lib/comments";
 import { judgeIdeas } from "@/lib/ideas";
+import { syncLeads } from "@/lib/leads";
 import { reportDue, sendDailyReport } from "@/lib/health";
 
 export async function GET(req: NextRequest) {
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
     if (minute === 0) await syncMetrics(ws.id); // статистика раз в час
     if (minute % 15 === 0) await syncComments(ws.id); // комментарии каждые 15 минут: отвечать в первый час
     try {
+      if (minute % 5 === 0) await syncLeads(ws.id); // новые переписки каждые 5 минут: чем быстрее ответ, тем выше шанс продажи
       if (minute === 30) await judgeIdeas(ws.id); // вердикты идеям таргетинга раз в час
       if (reportDue(s)) await sendDailyReport(ws.id); // ежедневный отчёт и сторож в Telegram
     } catch (e) { console.error("[cron]", (e as Error).message); }

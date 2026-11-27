@@ -5,7 +5,7 @@ import { campaignsById, cpl, hasTemplates, waLink, type IdeaText } from "@/lib/i
 import { DELIVERY } from "@/lib/health";
 import { Card, PageHeader, Badge, btn, btnGhost, btnMint, input, label, fmt } from "@/components/ui";
 import { Flash } from "@/components/Flash";
-import { addIdeaSale, createIdeaAction, deleteIdea, generateIdeasAction, judgeIdeasAction, launchIdeaAction, seedIdeasAction, setIdeaStatus } from "../actions";
+import { addIdeaAdsAction, addIdeaSale, createIdeaAction, deleteIdea, setIdeaImage, generateIdeasAction, judgeIdeasAction, launchIdeaAction, seedIdeasAction, setIdeaStatus } from "../actions";
 
 export const dynamic = "force-dynamic";
 const GENDER = { all: "все", male: "мужчины", female: "женщины" } as const;
@@ -22,6 +22,7 @@ export default async function Ideas() {
   const s = await getSettings(ws.id);
   const ideas = await db.adIdea.findMany({ where: { workspaceId: ws.id }, orderBy: { createdAt: "asc" } });
   const campaigns = ideas.some((i) => i.campaignId) ? await campaignsById(ws.id) : new Map();
+  const leadCounts = new Map((await db.lead.groupBy({ by: ["ideaId"], where: { workspaceId: ws.id, ideaId: { not: null } }, _count: true })).map((g) => [g.ideaId, g._count]));
   return (
     <div className="space-y-6">
       <PageHeader title="Идеи таргетинга" subtitle="Гипотеза, тест с малым бюджетом, вердикт по цене заявки">
@@ -33,7 +34,7 @@ export default async function Ideas() {
       </PageHeader>
       <Flash />
       {!hasTemplates(s.niche) && !ideas.length && <Card className="bg-mint"><p className="text-sm">Выберите сферу в <Link href="/ai" className="font-semibold underline">ИИ-менеджере</Link>: для страхования на доску сразу попадут готовые гипотезы с текстами на азербайджанском и русском. Или добавьте свою идею ниже.</p></Card>}
-      <p className="text-xs text-mute">Тест создаёт кампанию на паузе с бюджетом идеи. Деньги начинают тратиться только после вашей кнопки «Запустить» в разделе «Реклама». Вердикт выносится после 3 дней показов{s.maxCpl > 0 ? ` по потолку цены заявки ${money(s.maxCpl)}` : " (потолок цены заявки не задан: сравниваю с отраслевым CTR и наличием заявок)"}.</p>
+      <p className="text-xs text-mute">Укажите у идеи ссылку на картинку, и тест соберётся целиком: кампания, аудитория и по объявлению на каждый текст. Тест создаёт кампанию на паузе с бюджетом идеи. Деньги начинают тратиться только после вашей кнопки «Запустить» в разделе «Реклама». Вердикт выносится после 3 дней показов{s.maxCpl > 0 ? ` по потолку цены заявки ${money(s.maxCpl)}` : " (потолок цены заявки не задан: сравниваю с отраслевым CTR и наличием заявок)"}.</p>
 
       <div className="grid gap-4 xl:grid-cols-4">
         {COLUMNS.map(([status, title, hint]) => {
@@ -75,10 +76,18 @@ export default async function Ideas() {
                         <div className="col-span-3 text-mute">{(DELIVERY[c.delivery ?? c.status] ?? [c.status])[0]} · показы {fmt(c.impressions ?? 0)} · клики {fmt(c.clicks ?? 0)}</div>
                       </div>
                     )}
-                    {i.verdict && <p className={`rounded-xl px-3 py-2 text-xs ${i.status === "won" ? "bg-mint/60" : i.verdict.startsWith("Не ") ? "bg-[#ffe1e1]" : "bg-[#ffe9b0]/60"}`}>{i.verdict}</p>}
+                    {status !== "won" && status !== "lost" && (
+                      <form action={setIdeaImage.bind(null, i.id)} className="flex items-center gap-1.5">
+                        <input name="imageUrl" defaultValue={i.imageUrl} placeholder="https://… ссылка на картинку объявления" className={`${input} !py-1.5 !text-xs`} />
+                        <button className={`${btnGhost} !px-3 !py-1.5`}>OK</button>
+                      </form>
+                    )}
+                    {leadCounts.get(i.id) && <p className="text-xs">Заявок в программе: <b>{leadCounts.get(i.id)}</b></p>}
+                    {i.verdict && <p className={`rounded-xl px-3 py-2 text-xs ${i.status === "won" ? "bg-mint/60" : /^(Не |Объявления не)/.test(i.verdict) ? "bg-[#ffe1e1]" : "bg-[#ffe9b0]/60"}`}>{i.verdict}</p>}
                     {link && <label className="block text-[11px] text-mute">Ссылка в WhatsApp с кодом {i.code} (для постов, сторис и объявлений)<input readOnly value={link} className={`${input} mt-1 !py-1.5 !text-xs`} /></label>}
                     <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
-                      {status === "idea" && <form action={launchIdeaAction.bind(null, i.id)}><button className={`${btn} !py-1.5`}>Создать тест</button></form>}
+                      {status === "idea" && <form action={launchIdeaAction.bind(null, i.id)}><button className={`${btn} !py-1.5`}>{i.imageUrl ? "Создать тест с объявлениями" : "Создать тест"}</button></form>}
+                      {status === "testing" && i.campaignId && (c?.delivery === "NO_ADS" || /объявлений в ней пока нет|Объявления не созданы/.test(i.verdict)) && <form action={addIdeaAdsAction.bind(null, i.id)}><button className={`${btn} !py-1.5`}>Добавить объявления</button></form>}
                       {status !== "idea" && (
                         <span className="flex items-center gap-1.5 text-xs">Продано полисов: <b>{i.sales}</b>
                           <form action={addIdeaSale.bind(null, i.id, 1)}><button className={`${btnGhost} !px-2.5 !py-1`}>+1</button></form>

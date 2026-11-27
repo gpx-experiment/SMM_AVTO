@@ -114,6 +114,29 @@ model AiSettings {
   whatsappNumber   String    @default("") // номер WhatsApp для ссылок с кодом идеи и напоминаний о продлении
   reportHour       Int       @default(9)  // час ежедневного отчёта в Telegram по часовому поясу аудитории (-1 = выключен)
   lastReportAt     DateTime?
+  leadsSince       DateTime? // с какого момента переписки считаются заявками (ставится при первом сборе, старые чаты не тянем)
+}
+
+// Заявка: переписка из Direct или Messenger либо запись, добавленная вручную (WhatsApp, звонок)
+model Lead {
+  id          String   @id @default(cuid())
+  workspaceId String
+  source      String   // instagram | messenger | whatsapp | phone | other
+  externalId  String   @default("") // id переписки в Meta
+  name        String
+  contact     String   @default("") // телефон или ник
+  product     String   @default("")
+  ideaId      String?  // идея таргетинга, с которой пришёл человек
+  message     String   @default("") // первое сообщение
+  lastMessage String   @default("")
+  lastAt      DateTime @default(now())
+  waiting     Boolean  @default(true) // последнее слово за клиентом: ждёт ответа
+  status      String   @default("new") // new | quoted | sold | lost
+  amount      Float    @default(0) // заработок с продажи
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, source, externalId])
 }
 
 // Идея таргетинга: гипотеза -> тест-кампания на паузе -> вердикт через несколько дней
@@ -133,7 +156,8 @@ model AdIdea {
   campaignId   String?
   startedAt    DateTime?
   verdict      String    @default("")
-  sales        Int       @default(0) // проданные полисы, отмечаются вручную
+  sales        Int       @default(0) // проданные полисы: считаются по заявкам со статусом «продано», можно поправить вручную
+  imageUrl     String    @default("") // картинка для объявлений теста
   createdAt    DateTime  @default(now())
 }
 

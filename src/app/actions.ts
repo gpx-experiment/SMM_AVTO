@@ -10,7 +10,9 @@ import { getSettings } from "@/lib/ai";
 import type { Objective, Targeting } from "@/connectors/types";
 import { sendReply, syncComments } from "@/lib/comments";
 import { NICHES, nichePreset, type NicheId } from "@/lib/benchmarks";
-import { addIdeas, generateIdeas, judgeIdeas, launchIdea, seedIdeas } from "@/lib/ideas";
+import { addIdeaAds, addIdeas, generateIdeas, judgeIdeas, launchIdea, seedIdeas } from "@/lib/ideas";
+import { setLeadIdea, setLeadStatus, syncLeads } from "@/lib/leads";
+import { normalizePhone } from "@/lib/renewals";
 import { sendDailyReport } from "@/lib/health";
 import { parseRenewals } from "@/lib/renewals";
 
@@ -301,4 +303,65 @@ export async function deleteRenewal(id: string) {
   await ownRenewal(id);
   await db.renewal.delete({ where: { id } });
   revalidatePath("/renewals");
+}
+
+// ---- Объявления теста
+
+export async function setIdeaImage(id: string, fd: FormData) {
+  await ownIdea(id);
+  const url = String(fd.get("imageUrl") ?? "").trim();
+  if (url && !/^https:\/\//.test(url)) { await flash("Ссылка на картинку должна начинаться с https://"); return; }
+  await db.adIdea.update({ where: { id }, data: { imageUrl: url } });
+  revalidatePath("/ideas");
+}
+
+export async function addIdeaAdsAction(id: string) {
+  await ownIdea(id);
+  await addIdeaAds(id);
+  revalidatePath("/ideas"); revalidatePath("/ads");
+}
+
+// ---- Заявки
+
+export async function syncLeadsAction() {
+  const ws = await currentWorkspace();
+  const { added, errors } = await syncLeads(ws.id);
+  await flash([`Новых заявок: ${added}`, ...errors].join(". "));
+  revalidatePath("/leads");
+}
+
+export async function createLeadAction(fd: FormData) {
+  const ws = await currentWorkspace();
+  const source = String(fd.get("source") || "whatsapp");
+  const raw = String(fd.get("contact") ?? "").trim();
+  const ideaId = String(fd.get("ideaId") || "") || null;
+  await db.lead.create({ data: { workspaceId: ws.id, source, name: String(fd.get("name") ?? "").trim() || "Без имени",
+    contact: source === "whatsapp" || source === "phone" ? normalizePhone(raw) : raw, product: String(fd.get("product") ?? "").trim(), ideaId,
+    message: String(fd.get("message") ?? "").trim(), waiting: false } });
+  revalidatePath("/leads");
+}
+
+async function ownLead(id: string) {
+  const ws = await currentWorkspace();
+  return db.lead.findFirstOrThrow({ where: { id, workspaceId: ws.id } });
+}
+
+export async function setLeadStatusAction(id: string, status: "new" | "quoted" | "sold" | "lost", fd?: FormData) {
+  const lead = await ownLead(id);
+  await setLeadStatus(lead, status, fd ? Math.max(0, Number(fd.get("amount")) || 0) : undefined);
+  revalidatePath("/leads"); revalidatePath("/ideas");
+}
+
+export async function updateLeadAction(id: string, fd: FormData) {
+  const lead = await ownLead(id);
+  await setLeadIdea(lead, String(fd.get("ideaId") || "") || null);
+  await db.lead.update({ where: { id }, data: { product: String(fd.get("product") ?? "").trim(), note: String(fd.get("note") ?? "").trim() } });
+  revalidatePath("/leads"); revalidatePath("/ideas");
+}
+
+export async function deleteLead(id: string) {
+  const lead = await ownLead(id);
+  if (lead.status === "sold") await setLeadStatus(lead, "lost");
+  await db.lead.delete({ where: { id } });
+  revalidatePath("/leads");
 }

@@ -86,7 +86,7 @@ export function ctrVsIndustry(ctr: number, niche?: string): Hint {
 export const LEADS_AVG = { cpl: 27.66, cvr: 7.72 };
 
 export function objectiveHint(objective: string): Hint {
-  if (objective === "messages") return { text: `Цель «Сообщения» ведёт человека сразу в переписку: для услуг это самый короткий путь до заявки. Ориентир по рынку США: медианная цена заявки $${String(LEADS_AVG.cpl).replace(".", ",")} по всем отраслям, в Азербайджане аукцион дешевле`, tone: "info", src: SRC.wordstream };
+  if (objective === "messages") return { text: `Цель «Сообщения» ведёт человека сразу в переписку: для услуг это самый короткий путь до заявки. Ориентир по рынку США: медианная цена заявки $${String(LEADS_AVG.cpl).replace(".", ",")} по всем отраслям`, tone: "info", src: SRC.wordstream };
   if (objective === "traffic") return { text: "Цель «Трафик»: медиана CTR 1,71%, клик около $0,70. Подходит, чтобы вести людей на сайт", tone: "info", src: SRC.wordstream };
   if (objective === "sales") return { text: "Цель «Продажи» оптимизирует под покупки по пикселю: лучше всего работает на тёплой аудитории", tone: "info", src: SRC.wordstream };
   return { text: "Цель «Вовлечение» дешевле набирает реакции и тёплую аудиторию для ретаргетинга", tone: "info", src: SRC.wordstream };
