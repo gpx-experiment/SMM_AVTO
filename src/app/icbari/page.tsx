@@ -17,10 +17,13 @@ export default async function Icbari() {
   const date = (d: Date) => d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Asia/Baku" });
   return (
     <div className="space-y-6">
-      <PageHeader title="İcbari" subtitle="Кабинеты mygov, с которых оформляется İcbari sığorta: на один кабинет 5 полисов за 30 дней, как на mygov">
-        <a href={MYGOV_URL} target="_blank" rel="noreferrer" className={btn}>Открыть mygov</a>
-      </PageHeader>
+      <PageHeader title="İcbari" subtitle="Оформление İcbari прямо в разделе; на один кабинет 5 полисов за 30 дней" />
       <Flash />
+
+      <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className={btnGhost}>Открыть в новой вкладке</a>}>
+        <iframe src={MYGOV_URL} className="h-[78vh] w-full rounded-xl border border-line bg-white" title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" />
+        <p className="mt-3 text-xs text-mute">Страница открывается прямо здесь, уходить никуда не нужно. Войдите своим кабинетом и оформляйте İcbari — всё происходит в этом окне. Если внутри окна пусто или «refused to connect» — это портал страховщика на профилактике, попробуйте позже.</p>
+      </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
         {!accounts.length && <p className="text-sm text-mute">Кабинетов пока нет. Добавьте первый ниже.</p>}
@@ -51,10 +54,10 @@ export default async function Icbari() {
             </li>
           ))}
         </ul>
-        {accounts.length > 0 && <p className="mt-3 text-xs text-mute">Вход в mygov делает владелец кабинета сам: пароли и коды здесь не хранятся. Оформили полис на mygov, записали его сюда, счётчик уменьшился. Место освобождается через 30 дней после полиса, а не 1-го числа — так считает mygov, и шестой полис там не пройдёт.</p>}
+        {accounts.length > 0 && <p className="mt-3 text-xs text-mute">Вход делает владелец кабинета сам, в окне выше: пароли и коды здесь не хранятся. Оформили İcbari — записали его сюда, счётчик уменьшился. Место освобождается через 30 дней после полиса, а не 1-го числа, и шестой полис за этот срок не пройдёт.</p>}
       </Card>
 
-      <Card title="Добавить кабинет mygov">
+      <Card title="Добавить кабинет">
         <form action={addMygovAccount} className="grid gap-3 md:grid-cols-4">
           <label className={label}>На кого оформлен<input name="owner" required placeholder="Ad Soyad" className={input} /></label>
           <label className={label}>Телефон<input name="phone" placeholder="050 123 45 67" className={input} /></label>
