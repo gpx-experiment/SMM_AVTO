@@ -20,10 +20,9 @@ export default async function Icbari() {
       <PageHeader title="İcbari" subtitle="Оформление İcbari прямо в разделе; на один кабинет 5 полисов за 30 дней" />
       <Flash />
 
-      <Card title="Оформление İcbari">
-        <p className="text-sm text-mute">Оформление открывается на портале в отдельной вкладке: войдите своим кабинетом и оформите İcbari, затем запишите полис в нужный кабинет ниже.</p>
-        <a href={MYGOV_URL} target="_blank" rel="noreferrer" className={`${btn} mt-4 !px-6 !py-3 !text-base`}>Оформить İcbari →</a>
-        <p className="mt-3 text-xs text-mute">Если портал оформления сейчас недоступен — он на профилактике, попробуйте позже.</p>
+      <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className="text-xs text-mute underline decoration-dotted">открыть отдельно</a>}>
+        <iframe src={MYGOV_URL} className="h-[82vh] w-full rounded-xl border border-line bg-white" title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" />
+        <p className="mt-3 text-xs text-mute">Оформление прямо здесь, без перехода на другой сайт. Войдите своим кабинетом, нажмите «MÜRACİƏT ET» и оформляйте İcbari — всё в этом окне. Если внутри пусто — портал страховщика на профилактике, попробуйте позже.</p>
       </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
