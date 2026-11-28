@@ -20,9 +20,10 @@ export default async function Icbari() {
       <PageHeader title="İcbari" subtitle="Оформление İcbari прямо в разделе; на один кабинет 5 полисов за 30 дней" />
       <Flash />
 
-      <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className="text-xs text-mute underline decoration-dotted">открыть отдельно</a>}>
-        <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" className="h-[82vh] w-full rounded-xl border border-line bg-white" />
-        <p className="mt-3 text-xs text-mute">Окно листается. Нажмите «MÜRACİƏT ET», войдите кабинетом и оформляйте İcbari — всё здесь, без перехода. Если внутри пусто — портал страховщика на профилактике, попробуйте позже или нажмите «открыть отдельно».</p>
+      <Card title="Оформление İcbari">
+        <p className="text-sm text-mute">Чистая форма İcbari: вводите госномер и техпаспорт, листаете шаги — ничего лишнего. Страница страховщика (insure.az), оформляете сами.</p>
+        <a href={ICBARI_FORM_URL} target="_blank" rel="noreferrer" className={`${btn} mt-4 !px-6 !py-3 !text-base`}>Оформить İcbari →</a>
+        <p className="mt-3 text-xs text-mute">Форму insure.az нельзя встроить прямо в раздел (запрет на их стороне), поэтому она открывается отдельной страницей. После оформления запишите полис в нужный кабинет ниже.</p>
       </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>

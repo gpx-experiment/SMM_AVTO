@@ -2,6 +2,7 @@
 import { db } from "./db";
 
 export const MYGOV_URL = "https://my.gov.az/services/insurance-services?serviceLabel=IS";
+export const ICBARI_FORM_URL = "https://insure.az/az/icbari"; // чистая форма İcbari (insure.az запрещает встраивание в iframe)
 export const WINDOW_DAYS = 30; // скользящее окно mygov: место освобождается через 30 дней после полиса
 
 /** Сколько полисов на кабинете попадает в скользящее окно на данный момент (новый полис сейчас не пройдёт, если это >= лимита) */
