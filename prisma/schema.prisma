@@ -225,3 +225,32 @@ model CommentItem {
   status      String   @default("new") // new | replied | ignored
   @@unique([accountId, externalId])
 }
+
+// Кабинет mygov, с которого оформляют İcbari (лимит полисов в месяц на один кабинет). Пароли и входы не храним.
+model MygovAccount {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  owner        String // на кого оформлен кабинет
+  phone        String         @default("")
+  note         String         @default("")
+  monthlyLimit Int            @default(5)
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  policies     IcbariPolicy[]
+
+  @@index([workspaceId])
+}
+
+// İcbari, оформленный через кабинет mygov
+model IcbariPolicy {
+  id          String       @id @default(cuid())
+  workspaceId String
+  accountId   String
+  account     MygovAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  client      String
+  car         String       @default("") // госномер или авто
+  amount      Float        @default(0) // сумма полиса, AZN
+  issuedAt    DateTime     @default(now())
+
+  @@index([workspaceId, issuedAt])
+}

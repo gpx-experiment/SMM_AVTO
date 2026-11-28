@@ -15,6 +15,7 @@ import { setLeadIdea, setLeadStatus, syncLeads } from "@/lib/leads";
 import { normalizePhone } from "@/lib/renewals";
 import { sendDailyReport } from "@/lib/health";
 import { parseRenewals } from "@/lib/renewals";
+import { monthStart } from "@/lib/icbari";
 
 /** Короткое сообщение о результате действия: показывается на странице полминуты */
 async function flash(text: string) {
@@ -364,4 +365,52 @@ export async function deleteLead(id: string) {
   if (lead.status === "sold") await setLeadStatus(lead, "lost");
   await db.lead.delete({ where: { id } });
   revalidatePath("/leads");
+}
+
+// ---- İcbari через кабинеты mygov
+
+export async function addMygovAccount(fd: FormData) {
+  const ws = await currentWorkspace();
+  const owner = String(fd.get("owner") ?? "").trim();
+  if (!owner) { await flash("Укажите, на кого оформлен кабинет"); return; }
+  const limit = Math.min(100, Math.max(1, Number(fd.get("monthlyLimit")) || 5));
+  await db.mygovAccount.create({ data: { workspaceId: ws.id, owner, phone: normalizePhone(String(fd.get("phone") ?? "")), note: String(fd.get("note") ?? "").trim(), monthlyLimit: limit } });
+  await flash(`Кабинет добавлен: ${owner}`);
+  revalidatePath("/icbari");
+}
+
+async function ownMygov(id: string) {
+  const ws = await currentWorkspace();
+  return db.mygovAccount.findFirstOrThrow({ where: { id, workspaceId: ws.id } });
+}
+
+export async function setMygovActive(id: string, active: boolean) {
+  await ownMygov(id);
+  await db.mygovAccount.update({ where: { id }, data: { active } });
+  revalidatePath("/icbari");
+}
+
+export async function deleteMygovAccount(id: string) {
+  await ownMygov(id);
+  await db.mygovAccount.delete({ where: { id } });
+  revalidatePath("/icbari");
+}
+
+/** Записать оформленный İcbari на кабинет; сверх месячного лимита не даём */
+export async function addIcbariPolicy(accountId: string, fd: FormData) {
+  const acc = await ownMygov(accountId);
+  const client = String(fd.get("client") ?? "").trim();
+  if (!client) { await flash("Укажите клиента"); return; }
+  const used = await db.icbariPolicy.count({ where: { accountId, issuedAt: { gte: monthStart() } } });
+  if (used >= acc.monthlyLimit) { await flash(`У кабинета «${acc.owner}» лимит на этот месяц исчерпан (${used} из ${acc.monthlyLimit})`); revalidatePath("/icbari"); return; }
+  await db.icbariPolicy.create({ data: { workspaceId: acc.workspaceId, accountId, client, car: String(fd.get("car") ?? "").trim(), amount: Math.max(0, Number(String(fd.get("amount") ?? "").replace(",", ".")) || 0) } });
+  await flash(`İcbari записан: ${client}. У кабинета «${acc.owner}» осталось ${acc.monthlyLimit - used - 1}`);
+  revalidatePath("/icbari");
+}
+
+export async function deleteIcbariPolicy(id: string) {
+  const ws = await currentWorkspace();
+  await db.icbariPolicy.findFirstOrThrow({ where: { id, workspaceId: ws.id } });
+  await db.icbariPolicy.delete({ where: { id } });
+  revalidatePath("/icbari");
 }
