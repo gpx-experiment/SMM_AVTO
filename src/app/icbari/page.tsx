@@ -20,11 +20,10 @@ export default async function Icbari() {
       <PageHeader title="İcbari" subtitle="Оформление İcbari прямо в разделе; на один кабинет 5 полисов за 30 дней" />
       <Flash />
 
-      <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className={btnGhost}>Открыть в новой вкладке</a>}>
-        <div className="relative h-[80vh] overflow-hidden rounded-xl border border-line bg-white">
-          <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" className="absolute left-0 w-full" style={{ top: -150, height: "calc(80vh + 150px)" }} />
-        </div>
-        <p className="mt-3 text-xs text-mute">Форма открывается прямо здесь, уходить никуда не нужно. Войдите своим кабинетом и оформляйте İcbari — всё в этом окне. Шапка портала скрыта, видна только форма. Если внутри пусто или «refused to connect» — портал страховщика на профилактике, попробуйте позже.</p>
+      <Card title="Оформление İcbari">
+        <p className="text-sm text-mute">Оформление открывается на портале в отдельной вкладке: войдите своим кабинетом и оформите İcbari, затем запишите полис в нужный кабинет ниже.</p>
+        <a href={MYGOV_URL} target="_blank" rel="noreferrer" className={`${btn} mt-4 !px-6 !py-3 !text-base`}>Оформить İcbari →</a>
+        <p className="mt-3 text-xs text-mute">Если портал оформления сейчас недоступен — он на профилактике, попробуйте позже.</p>
       </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
