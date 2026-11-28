@@ -15,7 +15,7 @@ import { setLeadIdea, setLeadStatus, syncLeads } from "@/lib/leads";
 import { normalizePhone } from "@/lib/renewals";
 import { sendDailyReport } from "@/lib/health";
 import { parseRenewals } from "@/lib/renewals";
-import { monthStart } from "@/lib/icbari";
+import { WINDOW_DAYS } from "@/lib/icbari";
 
 /** Короткое сообщение о результате действия: показывается на странице полминуты */
 async function flash(text: string) {
@@ -401,8 +401,9 @@ export async function addIcbariPolicy(accountId: string, fd: FormData) {
   const acc = await ownMygov(accountId);
   const client = String(fd.get("client") ?? "").trim();
   if (!client) { await flash("Укажите клиента"); return; }
-  const used = await db.icbariPolicy.count({ where: { accountId, issuedAt: { gte: monthStart() } } });
-  if (used >= acc.monthlyLimit) { await flash(`У кабинета «${acc.owner}» лимит на этот месяц исчерпан (${used} из ${acc.monthlyLimit})`); revalidatePath("/icbari"); return; }
+  const from = new Date(Date.now() - WINDOW_DAYS * 86400000);
+  const used = await db.icbariPolicy.count({ where: { accountId, issuedAt: { gte: from } } });
+  if (used >= acc.monthlyLimit) { await flash(`У кабинета «${acc.owner}» мест нет: ${used} из ${acc.monthlyLimit} за последние ${WINDOW_DAYS} дней. Место освободится через 30 дней после самого раннего полиса.`); revalidatePath("/icbari"); return; }
   await db.icbariPolicy.create({ data: { workspaceId: acc.workspaceId, accountId, client, car: String(fd.get("car") ?? "").trim(), amount: Math.max(0, Number(String(fd.get("amount") ?? "").replace(",", ".")) || 0) } });
   await flash(`İcbari записан: ${client}. У кабинета «${acc.owner}» осталось ${acc.monthlyLimit - used - 1}`);
   revalidatePath("/icbari");

@@ -1,5 +1,5 @@
 import { currentWorkspace } from "@/lib/db";
-import { MYGOV_URL, accountsWithUsage } from "@/lib/icbari";
+import { MYGOV_URL, WINDOW_DAYS, accountsWithUsage } from "@/lib/icbari";
 import { Card, PageHeader, Badge, btn, btnGhost, input, label } from "@/components/ui";
 import { Flash } from "@/components/Flash";
 import { addIcbariPolicy, addMygovAccount, deleteIcbariPolicy, deleteMygovAccount, setMygovActive } from "../actions";
@@ -14,16 +14,15 @@ export default async function Icbari() {
   const left = active.reduce((s, a) => s + a.left, 0);
   const policies = accounts.flatMap((a) => a.policies.map((p) => ({ ...p, owner: a.owner }))).sort((a, b) => b.issuedAt.getTime() - a.issuedAt.getTime());
   const sum = policies.reduce((s, p) => s + p.amount, 0);
-  const month = new Date().toLocaleDateString("ru-RU", { month: "long", year: "numeric", timeZone: "Asia/Baku" });
   const date = (d: Date) => d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Asia/Baku" });
   return (
     <div className="space-y-6">
-      <PageHeader title="İcbari" subtitle="Кабинеты mygov, с которых оформляется İcbari sığorta, и сколько полисов у каждого осталось в этом месяце">
+      <PageHeader title="İcbari" subtitle="Кабинеты mygov, с которых оформляется İcbari sığorta: на один кабинет 5 полисов за 30 дней, как на mygov">
         <a href={MYGOV_URL} target="_blank" rel="noreferrer" className={btn}>Открыть mygov</a>
       </PageHeader>
       <Flash />
 
-      <Card title={`Кабинеты · ${month}`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
+      <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
         {!accounts.length && <p className="text-sm text-mute">Кабинетов пока нет. Добавьте первый ниже.</p>}
         <ul className="divide-y divide-line">
           {accounts.map((a) => (
@@ -36,7 +35,8 @@ export default async function Icbari() {
                 <div className="flex gap-1" aria-label={`${a.used} из ${a.monthlyLimit}`}>
                   {Array.from({ length: a.monthlyLimit }, (_, i) => <span key={i} className={`h-2.5 w-6 rounded-full ${i < a.used ? "bg-ink" : "bg-mint"}`} />)}
                 </div>
-                <Badge tone={!a.active ? "gray" : a.left === 0 ? "red" : a.left === 1 ? "amber" : "mint"}>{!a.active ? "выключен" : a.left ? `осталось ${a.left}` : "лимит исчерпан"}</Badge>
+                <Badge tone={!a.active ? "gray" : a.left === 0 ? "red" : a.left === 1 ? "amber" : "mint"}>{!a.active ? "выключен" : a.left ? `свободно ${a.left}` : "мест нет"}</Badge>
+                {a.active && a.left === 0 && a.freesAt && <span className="text-xs text-mute">место через {Math.max(0, Math.ceil((a.freesAt.getTime() - Date.now()) / 86400000))} дн. ({date(a.freesAt)})</span>}
                 <form action={setMygovActive.bind(null, a.id, !a.active)}><button className="text-xs text-mute underline decoration-dotted">{a.active ? "выключить" : "включить"}</button></form>
                 <form action={deleteMygovAccount.bind(null, a.id)}><button className="text-xs text-mute underline decoration-dotted">удалить</button></form>
               </div>
@@ -51,7 +51,7 @@ export default async function Icbari() {
             </li>
           ))}
         </ul>
-        {accounts.length > 0 && <p className="mt-3 text-xs text-mute">Вход в mygov делает владелец кабинета сам: пароли и коды здесь не хранятся. Оформили полис на mygov, записали его сюда, счётчик уменьшился. Счётчик обнуляется 1-го числа.</p>}
+        {accounts.length > 0 && <p className="mt-3 text-xs text-mute">Вход в mygov делает владелец кабинета сам: пароли и коды здесь не хранятся. Оформили полис на mygov, записали его сюда, счётчик уменьшился. Место освобождается через 30 дней после полиса, а не 1-го числа — так считает mygov, и шестой полис там не пройдёт.</p>}
       </Card>
 
       <Card title="Добавить кабинет mygov">
@@ -65,7 +65,7 @@ export default async function Icbari() {
       </Card>
 
       {policies.length > 0 && (
-        <Card title="Оформлено в этом месяце" action={<Badge>{policies.length}{sum > 0 && ` · ${sum.toFixed(2)} AZN`}</Badge>}>
+        <Card title={`Оформлено за ${WINDOW_DAYS} дней`} action={<Badge>{policies.length}{sum > 0 && ` · ${sum.toFixed(2)} AZN`}</Badge>}>
           <ul className="divide-y divide-line text-sm">
             {policies.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-3 py-2.5">
