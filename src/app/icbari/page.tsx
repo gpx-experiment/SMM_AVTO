@@ -57,7 +57,7 @@ export default async function Icbari() {
         {accounts.length > 0 && <p className="mt-3 text-xs text-mute">Вход делает владелец кабинета сам, в окне выше: пароли и коды здесь не хранятся. Оформили İcbari — записали его сюда, счётчик уменьшился. Место освобождается через 30 дней после полиса, а не 1-го числа, и шестой полис за этот срок не пройдёт.</p>}
       </Card>
 
-      <Card title="Добавить кабинет mygov">
+      <Card title="Добавить кабинет">
         <form action={addMygovAccount} className="grid gap-3 md:grid-cols-4">
           <label className={label}>На кого оформлен<input name="owner" required placeholder="Ad Soyad" className={input} /></label>
           <label className={label}>Телефон<input name="phone" placeholder="050 123 45 67" className={input} /></label>
