@@ -12,9 +12,10 @@ const I = {
   lead: <><path d="M4 5h16v11H8l-4 4z" /><path d="M8 9h8M8 12h5" /></>,
   idea: <><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" /></>,
   renew: <><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 4v5h-5" /></>,
+  shield: <><path d="M12 3l8 3v6c0 4.5-3.2 7.9-8 9-4.8-1.1-8-4.5-8-9V6z" /><path d="M9 12l2 2 4-4" /></>,
   ai: <path d="M12 2l2.4 6.1L20.5 10l-6.1 2.4L12 18.5l-2.4-6.1L3.5 10l6.1-1.9zM19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9z" />,
 };
-const NAV: [string, string, keyof typeof I][] = [["/", "Дашборд", "dash"], ["/accounts", "Аккаунты", "acc"], ["/publish", "Публикации", "pub"], ["/ads", "Реклама", "ads"], ["/leads", "Заявки", "lead"], ["/ideas", "Идеи", "idea"], ["/renewals", "Продления", "renew"], ["/comments", "Комментарии", "com"], ["/ai", "ИИ-менеджер", "ai"], ["/playbook", "Приёмы", "book"]];
+const NAV: [string, string, keyof typeof I][] = [["/", "Дашборд", "dash"], ["/accounts", "Аккаунты", "acc"], ["/publish", "Публикации", "pub"], ["/ads", "Реклама", "ads"], ["/leads", "Заявки", "lead"], ["/ideas", "Идеи", "idea"], ["/renewals", "Продления", "renew"], ["/icbari", "İcbari", "shield"], ["/comments", "Комментарии", "com"], ["/ai", "ИИ-менеджер", "ai"], ["/playbook", "Приёмы", "book"]];
 
 export function Nav() {
   const path = usePathname();
