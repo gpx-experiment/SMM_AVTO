@@ -21,8 +21,8 @@ export default async function Icbari() {
       <Flash />
 
       <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className="text-xs text-mute underline decoration-dotted">открыть отдельно</a>}>
-        <div className="relative h-[250px] w-full overflow-hidden rounded-xl border border-line bg-white">
-          <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" scrolling="no" className="absolute left-0 top-0 w-full" style={{ marginTop: -235, height: 1300 }} />
+        <div className="relative h-[460px] w-full overflow-hidden rounded-xl border border-line bg-white">
+          <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" scrolling="no" className="absolute left-0 top-0 w-full" style={{ marginTop: -150, height: 1300 }} />
         </div>
         <p className="mt-3 text-xs text-mute">Нажмите «MÜRACİƏT ET», войдите кабинетом и оформляйте İcbari. Если кнопки нет или внутри пусто — портал на профилактике, попробуйте позже или нажмите «открыть отдельно».</p>
       </Card>
