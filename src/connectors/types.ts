@@ -60,6 +60,14 @@ export interface Campaign {
   objective?: Objective;
   /** Заявки за 7 дней: начатые переписки (WhatsApp, Direct, Messenger) и лиды */
   leads?: number;
+  /** Охват: сколько разных людей увидели (7 дней) */
+  reach?: number;
+  /** Переходы по ссылке (link_click, 7 дней) */
+  linkClicks?: number;
+  /** Просмотры целевой страницы (landing_page_view, 7 дней) */
+  landingViews?: number;
+  /** Начатые переписки: переходы в WhatsApp/Direct/Messenger (7 дней) */
+  messaging?: number;
   /** Кампания нацелена на заявки (переписки, лиды, конверсии): её судят по цене заявки, а не по CTR */
   leadGoal?: boolean;
   /** Состояние показа: ACTIVE, PAUSED, IN_REVIEW, DISAPPROVED, WITH_ISSUES, NO_ADS... */

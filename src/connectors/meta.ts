@@ -204,9 +204,9 @@ export const meta: Connector = {
     async listCampaigns(acc, token): Promise<Campaign[]> {
       type Row = { id: string; name: string; status: string; effective_status?: string; objective?: string; daily_budget?: string;
         adsets?: { data: AdSetRow[] }; ads?: { data: { effective_status: string }[] };
-        insights?: { data: { spend?: string; impressions?: string; clicks?: string; actions?: { action_type: string; value: string }[] }[] } };
+        insights?: { data: { spend?: string; impressions?: string; reach?: string; clicks?: string; actions?: { action_type: string; value: string }[] }[] } };
       const r = await http<{ data: Row[] }>(`${G}/${acc.adAccountId}/campaigns?${q_({
-        fields: "id,name,status,effective_status,objective,daily_budget,adsets.limit(50){id,status,daily_budget,optimization_goal},ads.limit(50){effective_status},insights.date_preset(last_7d){spend,impressions,clicks,actions}",
+        fields: "id,name,status,effective_status,objective,daily_budget,adsets.limit(50){id,status,daily_budget,optimization_goal},ads.limit(50){effective_status},insights.date_preset(last_7d){spend,impressions,reach,clicks,actions}",
         limit: 100, access_token: token,
       })}`);
       return r.data.map((c) => {
@@ -216,6 +216,10 @@ export const meta: Connector = {
         const setBudget = sets.filter((s) => s.status === "ACTIVE" && s.daily_budget).reduce((x, s) => x + Number(s.daily_budget), 0);
         const budget = c.daily_budget ? Number(c.daily_budget) : setBudget;
         const leads = (ins?.actions ?? []).filter((a) => LEAD_ACTIONS.includes(a.action_type)).reduce((x, a) => x + Number(a.value), 0);
+        const act = (t: string) => (ins?.actions ?? []).filter((a) => a.action_type === t).reduce((x, a) => x + Number(a.value), 0);
+        const messaging = act("onsite_conversion.messaging_conversation_started_7d");
+        const linkClicks = act("link_click");
+        const landingViews = act("landing_page_view");
         let delivery = c.effective_status ?? c.status;
         if (delivery === "ACTIVE") {
           if (!ads.length) delivery = "NO_ADS";
@@ -227,7 +231,8 @@ export const meta: Connector = {
           id: c.id, name: c.name, status: c.status, delivery, leads,
           leadGoal: ["OUTCOME_LEADS", "OUTCOME_SALES"].includes(c.objective ?? "") || sets.some((s) => LEAD_GOALS.includes(s.optimization_goal ?? "")),
           dailyBudget: budget ? budget / 100 : undefined, budgetLevel: c.daily_budget ? "campaign" as const : "adset" as const,
-          spend: Number(ins?.spend ?? 0), impressions: Number(ins?.impressions ?? 0), clicks: Number(ins?.clicks ?? 0),
+          spend: Number(ins?.spend ?? 0), impressions: Number(ins?.impressions ?? 0), reach: Number(ins?.reach ?? 0), clicks: Number(ins?.clicks ?? 0),
+          linkClicks, landingViews, messaging,
         };
       });
     },

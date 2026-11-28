@@ -7,6 +7,7 @@ import { createCampaign, toggleCampaign, updateBudget } from "../actions";
 import { TargetingPicker } from "@/components/TargetingPicker";
 import { CampaignOptions } from "@/components/CampaignOptions";
 import { ImpactHint } from "@/components/ImpactHint";
+import { Funnel } from "@/components/Funnel";
 import { ctrVsIndustry, nichePreset, NICHES, type NicheId } from "@/lib/benchmarks";
 import { DELIVERY } from "@/lib/health";
 import Link from "next/link";
@@ -31,6 +32,9 @@ export default async function Ads() {
   const imp = all.reduce((s, c) => s + (c.impressions ?? 0), 0);
   const clicks = all.reduce((s, c) => s + (c.clicks ?? 0), 0);
   const leads = all.reduce((s, c) => s + (c.leads ?? 0), 0);
+  const reach = all.reduce((s, c) => s + (c.reach ?? 0), 0);
+  const linkClicks = all.reduce((s, c) => s + (c.linkClicks ?? 0), 0);
+  const messaging = all.reduce((s, c) => s + (c.messaging ?? 0), 0);
   const money = (n: number) => n.toFixed(2).replace(".", ",");
   // Бюджет: расход за месяц против своего потолка, сумма дневных бюджетов активных кампаний, остаток лимита Meta
   const sums = data.map((d) => d.summary).filter((x) => x != null);
@@ -75,6 +79,29 @@ export default async function Ads() {
           )}
         </Card>
       )}
+      {imp > 0 && (() => {
+        const stages = [
+          { label: "Показы", value: imp, hint: "сколько раз показали рекламу" },
+          ...(reach > 0 ? [{ label: "Охват", value: reach, hint: "сколько разных людей увидели" }] : []),
+          { label: "Клики", value: clicks, cost: clicks ? spend / clicks : null },
+          ...(linkClicks > 0 ? [{ label: "Переходы по ссылке", value: linkClicks, cost: linkClicks ? spend / linkClicks : null }] : []),
+          ...(messaging > 0 ? [{ label: "Переписки (WhatsApp/Direct)", value: messaging, hint: "перешли и написали", cost: messaging ? spend / messaging : null }] : []),
+          { label: "Заявки", value: leads, hint: "переписки + лиды", cost: leads ? spend / leads : null },
+        ];
+        return (
+          <Card title="Воронка за 7 дней" action={<span className="text-xs text-mute">путь клиента от показа до заявки</span>}>
+            <Funnel stages={stages} />
+            <div className="mt-5 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
+              <div><div className="text-mute">CTR (клики/показы)</div><div className="font-display text-xl font-extrabold tabular-nums">{imp ? `${((clicks / imp) * 100).toFixed(2)}%` : "—"}</div></div>
+              <div><div className="text-mute">Цена клика</div><div className="font-display text-xl font-extrabold tabular-nums">{clicks ? money(spend / clicks) : "—"}</div></div>
+              <div><div className="text-mute">Цена 1000 показов</div><div className="font-display text-xl font-extrabold tabular-nums">{imp ? money((spend / imp) * 1000) : "—"}</div></div>
+              <div><div className="text-mute">Частота показа</div><div className="font-display text-xl font-extrabold tabular-nums">{reach ? (imp / reach).toFixed(1) : "—"}</div><div className="text-[11px] text-mute">раз на человека</div></div>
+              <div><div className="text-mute">Цена перехода в WhatsApp</div><div className="font-display text-xl font-extrabold tabular-nums">{messaging ? money(spend / messaging) : "—"}</div></div>
+            </div>
+          </Card>
+        );
+      })()}
+
       {imp > 0 && <ImpactHint hint={ctrVsIndustry((clicks / imp) * 100, s.niche)} />}
       <p className="text-sm">Новые аудитории и заходы удобнее проверять на <Link href="/ideas" className="font-semibold underline decoration-dotted">доске идей</Link>: гипотеза, тест с малым бюджетом, вердикт.</p>
       {!preset && accounts.length > 0 && <p className="text-xs text-mute">Выберите сферу бизнеса в ИИ-менеджере, чтобы сравнивать CTR с вашей отраслью и получить стартовую аудиторию.</p>}
@@ -84,7 +111,7 @@ export default async function Ads() {
           <div className="-mx-6 overflow-x-auto px-6">
             <table className="w-full min-w-[1000px] text-sm">
               <thead className="text-left text-xs font-semibold text-mute">
-                <tr className="border-b border-line"><th className="py-2.5 pr-3">Кампания</th><th className="pr-3">Статус</th><th className="pr-3 text-right">Расход 7д</th><th className="pr-3 text-right">Показы</th><th className="pr-3 text-right">Клики</th><th className="pr-3 text-right">CTR</th><th className="pr-3 text-right">Заявки</th><th className="pr-3 text-right">Цена заявки</th><th className="pr-3">Бюджет/день</th><th /></tr>
+                <tr className="border-b border-line"><th className="py-2.5 pr-3">Кампания</th><th className="pr-3">Статус</th><th className="pr-3 text-right">Расход 7д</th><th className="pr-3 text-right">Показы</th><th className="pr-3 text-right">Клики</th><th className="pr-3 text-right">CTR</th><th className="pr-3 text-right">Переходы</th><th className="pr-3 text-right">WhatsApp</th><th className="pr-3 text-right">Заявки</th><th className="pr-3 text-right">Цена заявки</th><th className="pr-3">Бюджет/день</th><th /></tr>
               </thead>
               <tbody>
                 {campaigns.map((c) => {
@@ -102,7 +129,7 @@ export default async function Ads() {
                       <td className="pr-3 text-right tabular-nums">{c.impressions != null ? fmt(c.impressions) : "—"}</td>
                       <td className="pr-3 text-right tabular-nums">{c.clicks != null ? fmt(c.clicks) : "—"}</td>
                       <td className="pr-3 text-right font-semibold tabular-nums">{c.impressions && a.provider === "tiktok_ads" ? `${(((c.clicks ?? 0) / c.impressions) * 100).toFixed(2)}%` : c.impressions ? (() => { const ctr = ((c.clicks ?? 0) / c.impressions) * 100; const h = ctrVsIndustry(ctr, s.niche); return <>{ctr.toFixed(2)}%<div className={`text-[11px] font-medium ${h.pct! >= 0 ? "text-emerald-700" : "text-red-600"}`} title={h.text}>{h.pct! >= 0 ? "▲" : "▼"} {Math.abs(h.pct!)}% к отрасли</div></>; })() : "—"}</td>
-                      <td className="pr-3 text-right tabular-nums">{c.leads != null ? fmt(c.leads) : "—"}</td>
+                      <td className="pr-3 text-right tabular-nums">{c.linkClicks != null ? fmt(c.linkClicks) : "—"}</td><td className="pr-3 text-right tabular-nums">{c.messaging != null ? fmt(c.messaging) : "—"}</td><td className="pr-3 text-right tabular-nums">{c.leads != null ? fmt(c.leads) : "—"}</td>
                       <td className={`pr-3 text-right font-semibold tabular-nums ${price != null && s.maxCpl > 0 ? (price <= s.maxCpl ? "text-emerald-700" : "text-red-600") : ""}`}>{price != null ? money(price) : c.leadGoal && (c.spend ?? 0) > 0 ? <span className="font-normal text-mute">нет заявок</span> : "—"}</td>
                       <td className="pr-3">
                         <form action={updateBudget.bind(null, a.id, c.id)} className="flex gap-1.5">
