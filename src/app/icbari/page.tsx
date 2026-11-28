@@ -21,10 +21,10 @@ export default async function Icbari() {
       <Flash />
 
       <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className="text-xs text-mute underline decoration-dotted">открыть отдельно</a>}>
-        <div className="relative h-[78vh] overflow-hidden rounded-xl border border-line bg-white">
-          <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" scrolling="no" className="absolute left-1/2 w-[1100px] -translate-x-1/2" style={{ top: -210, height: 2200 }} />
+        <div className="relative h-[250px] w-full overflow-hidden rounded-xl border border-line bg-white">
+          <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" scrolling="no" className="absolute left-0 top-0 w-full" style={{ marginTop: -235, height: 1300 }} />
         </div>
-        <p className="mt-3 text-xs text-mute">Оформление прямо здесь, без перехода на другой сайт. Нажмите «MÜRACİƏT ET», войдите кабинетом и оформляйте İcbari. Если внутри пусто — портал страховщика на профилактике, попробуйте позже.</p>
+        <p className="mt-3 text-xs text-mute">Нажмите «MÜRACİƏT ET», войдите кабинетом и оформляйте İcbari. Если кнопки нет или внутри пусто — портал на профилактике, попробуйте позже или нажмите «открыть отдельно».</p>
       </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
