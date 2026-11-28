@@ -16,9 +16,9 @@ const campaigns = new Map<string, Campaign[]>();
 function list(adAccountId: string) {
   if (!campaigns.has(adAccountId)) {
     campaigns.set(adAccountId, [
-      { id: `${adAccountId}-1`, name: "Продвижение Reels: новинка", status: "ACTIVE", dailyBudget: 20, spend: 96.4, impressions: 41200, clicks: 1310, leads: 38, leadGoal: true, delivery: "ACTIVE" },
-      { id: `${adAccountId}-2`, name: "Охват: бренд", status: "PAUSED", dailyBudget: 10, spend: 35.1, impressions: 18800, clicks: 402, leads: 0, delivery: "PAUSED" },
-      { id: `${adAccountId}-3`, name: "Баннер: холодная аудитория", status: "ACTIVE", dailyBudget: 8, spend: 41.7, impressions: 23400, clicks: 117, leads: 1, leadGoal: true, delivery: "ACTIVE" },
+      { id: `${adAccountId}-1`, name: "Продвижение Reels: новинка", status: "ACTIVE", dailyBudget: 20, spend: 96.4, impressions: 41200, reach: 28900, clicks: 1310, linkClicks: 940, landingViews: 760, messaging: 52, leads: 38, leadGoal: true, delivery: "ACTIVE" },
+      { id: `${adAccountId}-2`, name: "Охват: бренд", status: "PAUSED", dailyBudget: 10, spend: 35.1, impressions: 18800, reach: 15100, clicks: 402, linkClicks: 280, landingViews: 210, messaging: 9, leads: 0, delivery: "PAUSED" },
+      { id: `${adAccountId}-3`, name: "Баннер: холодная аудитория", status: "ACTIVE", dailyBudget: 8, spend: 41.7, impressions: 23400, reach: 19800, clicks: 117, linkClicks: 74, landingViews: 55, messaging: 3, leads: 1, leadGoal: true, delivery: "ACTIVE" },
     ]);
   }
   return campaigns.get(adAccountId)!;
