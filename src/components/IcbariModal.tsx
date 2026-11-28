@@ -18,7 +18,9 @@ export function IcbariModal({ url }: { url: string }) {
                 <button onClick={() => setOpen(false)} aria-label="Закрыть" className="rounded-full px-2 text-2xl leading-none text-mute hover:text-ink">×</button>
               </div>
             </div>
-            <iframe src={url} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" className="w-full flex-1 bg-white" />
+            <div className="relative flex-1 overflow-hidden bg-white">
+              <iframe src={url} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" className="absolute inset-x-0 w-full" style={{ top: -129, height: "calc(100% + 129px)" }} />
+            </div>
           </div>
         </div>
       )}
