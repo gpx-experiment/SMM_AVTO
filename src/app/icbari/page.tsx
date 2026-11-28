@@ -21,8 +21,10 @@ export default async function Icbari() {
       <Flash />
 
       <Card title="Оформление İcbari" action={<a href={MYGOV_URL} target="_blank" rel="noreferrer" className={btnGhost}>Открыть в новой вкладке</a>}>
-        <iframe src={MYGOV_URL} className="h-[78vh] w-full rounded-xl border border-line bg-white" title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" />
-        <p className="mt-3 text-xs text-mute">Страница открывается прямо здесь, уходить никуда не нужно. Войдите своим кабинетом и оформляйте İcbari — всё происходит в этом окне. Если внутри окна пусто или «refused to connect» — это портал страховщика на профилактике, попробуйте позже.</p>
+        <div className="relative h-[80vh] overflow-hidden rounded-xl border border-line bg-white">
+          <iframe src={MYGOV_URL} title="İcbari" referrerPolicy="no-referrer-when-downgrade" allow="clipboard-write; camera; microphone" className="absolute left-0 w-full" style={{ top: -150, height: "calc(80vh + 150px)" }} />
+        </div>
+        <p className="mt-3 text-xs text-mute">Форма открывается прямо здесь, уходить никуда не нужно. Войдите своим кабинетом и оформляйте İcbari — всё в этом окне. Шапка портала скрыта, видна только форма. Если внутри пусто или «refused to connect» — портал страховщика на профилактике, попробуйте позже.</p>
       </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
