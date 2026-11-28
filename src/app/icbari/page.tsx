@@ -1,7 +1,8 @@
 import { currentWorkspace } from "@/lib/db";
-import { ICBARI_FORM_URL, WINDOW_DAYS, accountsWithUsage } from "@/lib/icbari";
+import { MYGOV_URL, WINDOW_DAYS, accountsWithUsage } from "@/lib/icbari";
 import { Card, PageHeader, Badge, btn, btnGhost, input, label } from "@/components/ui";
 import { Flash } from "@/components/Flash";
+import { IcbariModal } from "@/components/IcbariModal";
 import { addIcbariPolicy, addMygovAccount, deleteIcbariPolicy, deleteMygovAccount, setMygovActive } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +22,8 @@ export default async function Icbari() {
       <Flash />
 
       <Card title="Оформление İcbari">
-        <p className="text-sm text-mute">Чистая форма İcbari: вводите госномер и техпаспорт, листаете шаги — ничего лишнего. Страница страховщика (insure.az), оформляете сами.</p>
-        <a href={ICBARI_FORM_URL} target="_blank" rel="noreferrer" className={`${btn} mt-4 !px-6 !py-3 !text-base`}>Оформить İcbari →</a>
-        <p className="mt-3 text-xs text-mute">Форму insure.az нельзя встроить прямо в раздел (запрет на их стороне), поэтому она открывается отдельной страницей. После оформления запишите полис в нужный кабинет ниже.</p>
+        <p className="text-sm text-mute">Нажмите кнопку — оформление откроется окном прямо здесь, без перехода на другой сайт. Войдите кабинетом, нажмите «MÜRACİƏT ET» и оформляйте İcbari. Затем запишите полис в нужный кабинет ниже.</p>
+        <IcbariModal url={MYGOV_URL} />
       </Card>
 
       <Card title={`Кабинеты · 5 за ${WINDOW_DAYS} дней`} action={<Badge tone={left ? "mint" : accounts.length ? "red" : "gray"}>свободно {left} из {total}</Badge>}>
