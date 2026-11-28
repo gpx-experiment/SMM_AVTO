@@ -1,5 +1,5 @@
 import { currentWorkspace } from "@/lib/db";
-import { MYGOV_URL, WINDOW_DAYS, accountsWithUsage } from "@/lib/icbari";
+import { ICBARI_FORM_URL, WINDOW_DAYS, accountsWithUsage } from "@/lib/icbari";
 import { Card, PageHeader, Badge, btn, btnGhost, input, label } from "@/components/ui";
 import { Flash } from "@/components/Flash";
 import { addIcbariPolicy, addMygovAccount, deleteIcbariPolicy, deleteMygovAccount, setMygovActive } from "../actions";
